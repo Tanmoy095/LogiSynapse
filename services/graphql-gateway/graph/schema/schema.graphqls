@@ -1,0 +1,13 @@
+# graph/schema/schema.graphqls
+type Shipment {
+  id: ID!
+  status: String!
+  origin: String!
+  destination: String!
+  eta: String!
+}
+
+type Query {
+  shipments: [Shipment!]!
+  health: String!
+}
