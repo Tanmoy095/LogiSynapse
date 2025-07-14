@@ -2,13 +2,83 @@
 
 package model
 
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strconv"
+)
+
+type Carrier struct {
+	Name        string `json:"name"`
+	TrackingURL string `json:"trackingUrl"`
+}
+
 type Query struct {
 }
 
 type Shipment struct {
-	ID          string `json:"id"`
-	Status      string `json:"status"`
-	Origin      string `json:"origin"`
-	Destination string `json:"destination"`
-	Eta         string `json:"eta"`
+	ID          string         `json:"id"`
+	Status      ShipmentStatus `json:"status"`
+	Origin      string         `json:"origin"`
+	Destination string         `json:"destination"`
+	Eta         string         `json:"eta"`
+	Carrier     *Carrier       `json:"carrier"`
+}
+
+type ShipmentStatus string
+
+const (
+	ShipmentStatusInTransit ShipmentStatus = "IN_TRANSIT"
+	ShipmentStatusDelivered ShipmentStatus = "DELIVERED"
+	ShipmentStatusPending   ShipmentStatus = "PENDING"
+)
+
+var AllShipmentStatus = []ShipmentStatus{
+	ShipmentStatusInTransit,
+	ShipmentStatusDelivered,
+	ShipmentStatusPending,
+}
+
+func (e ShipmentStatus) IsValid() bool {
+	switch e {
+	case ShipmentStatusInTransit, ShipmentStatusDelivered, ShipmentStatusPending:
+		return true
+	}
+	return false
+}
+
+func (e ShipmentStatus) String() string {
+	return string(e)
+}
+
+func (e *ShipmentStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ShipmentStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ShipmentStatus", str)
+	}
+	return nil
+}
+
+func (e ShipmentStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ShipmentStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ShipmentStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }

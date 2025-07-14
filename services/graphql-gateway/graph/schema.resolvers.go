@@ -6,20 +6,25 @@ package graph
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/generated"
 	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/model"
 )
 
 // Now implement Query resolver methods on queryResolver
-func (r *queryResolver) Shipments(ctx context.Context) ([]*model.Shipment, error) {
-	return []*model.Shipment{
+func (r *queryResolver) Shipments(ctx context.Context, origin *string) ([]*model.Shipment, error) {
+	allShipments := []*model.Shipment{
 		{
 			ID:          "1",
 			Status:      "In Transit",
 			Origin:      "Dhaka",
 			Destination: "Berlin",
 			Eta:         "2025-07-15",
+			Carrier: &model.Carrier{
+				Name:        "DHL",
+				TrackingURL: "https://dhl.com/track/123",
+			},
 		},
 		{
 			ID:          "2",
@@ -27,13 +32,32 @@ func (r *queryResolver) Shipments(ctx context.Context) ([]*model.Shipment, error
 			Origin:      "Chittagong",
 			Destination: "Munich",
 			Eta:         "2025-07-10",
+			Carrier: &model.Carrier{
+				Name:        "DHL",
+				TrackingURL: "https://dhll.com/track/123",
+			},
 		},
-	}, nil
+	}
+
+	// If no origin is provided, return all
+	if origin == nil {
+		return allShipments, nil
+	}
+
+	// Filter by origin
+	var filtered []*model.Shipment
+	for _, shipment := range allShipments {
+		if shipment.Origin == *origin {
+			filtered = append(filtered, shipment)
+		}
+	}
+
+	return filtered, nil
 }
 
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (string, error) {
-	return "GraphQL Gateway OK", nil
+	panic(fmt.Errorf("not implemented: Health - health"))
 }
 
 // Query returns generated.QueryResolver implementation.

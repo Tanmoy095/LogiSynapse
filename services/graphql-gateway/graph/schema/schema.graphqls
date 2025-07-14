@@ -1,13 +1,26 @@
 # graph/schema/schema.graphqls
 type Shipment {
   id: ID!
-  status: String!
+  status: ShipmentStatus!
   origin: String!
   destination: String!
   eta: String!
+  carrier: Carrier!
+}
+
+#ENUM........
+enum ShipmentStatus {
+  IN_TRANSIT
+  DELIVERED
+  PENDING
+}
+
+type Carrier {
+  name: String!
+  trackingUrl: String!
 }
 
 type Query {
-  shipments: [Shipment!]!
+  shipments(origin: String): [Shipment!]!
   health: String!
 }
