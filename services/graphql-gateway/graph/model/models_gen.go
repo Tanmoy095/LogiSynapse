@@ -14,6 +14,22 @@ type Carrier struct {
 	TrackingURL string `json:"trackingUrl"`
 }
 
+type CarrierInput struct {
+	Name        string `json:"name"`
+	TrackingURL string `json:"trackingUrl"`
+}
+
+type Mutation struct {
+}
+
+type NewShipmentInput struct {
+	Status      ShipmentStatus `json:"status"`
+	Origin      string         `json:"origin"`
+	Destination string         `json:"destination"`
+	Eta         string         `json:"eta"`
+	Carrier     *CarrierInput  `json:"carrier"`
+}
+
 type Query struct {
 }
 

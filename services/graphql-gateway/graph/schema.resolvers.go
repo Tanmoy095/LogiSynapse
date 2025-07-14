@@ -10,7 +10,29 @@ import (
 
 	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/generated"
 	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/model"
+	"github.com/google/uuid"
 )
+
+var shipments []*model.Shipment
+
+// CreateShipment is the resolver for the createShipment field.
+func (r *mutationResolver) CreateShipment(ctx context.Context, input model.NewShipmentInput) (*model.Shipment, error) {
+	newID := uuid.New().String()
+
+	newShipment := &model.Shipment{
+		ID:          newID,
+		Status:      input.Status, // Uses GraphQL enum (IN_TRANSIT, DELIVERED, PENDING)
+		Origin:      input.Origin,
+		Destination: input.Destination,
+		Eta:         input.Eta,
+		Carrier: &model.Carrier{
+			Name:        input.Carrier.Name,
+			TrackingURL: input.Carrier.TrackingURL, // Fixed to match schema (trackingUrl)
+		},
+	}
+	shipments = append(shipments, newShipment)
+	return newShipment, nil
+}
 
 // Now implement Query resolver methods on queryResolver
 func (r *queryResolver) Shipments(ctx context.Context, origin *string) ([]*model.Shipment, error) {
@@ -38,15 +60,16 @@ func (r *queryResolver) Shipments(ctx context.Context, origin *string) ([]*model
 			},
 		},
 	}
+	shipments := append(shipments, allShipments...)
 
 	// If no origin is provided, return all
 	if origin == nil {
-		return allShipments, nil
+		return shipments, nil
 	}
 
 	// Filter by origin
 	var filtered []*model.Shipment
-	for _, shipment := range allShipments {
+	for _, shipment := range shipments {
 		if shipment.Origin == *origin {
 			filtered = append(filtered, shipment)
 		}
@@ -60,7 +83,11 @@ func (r *queryResolver) Health(ctx context.Context) (string, error) {
 	panic(fmt.Errorf("not implemented: Health - health"))
 }
 
+// Mutation returns generated.MutationResolver implementation.
+func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
+
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

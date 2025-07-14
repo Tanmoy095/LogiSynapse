@@ -38,6 +38,7 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Mutation() MutationResolver
 	Query() QueryResolver
 }
 
@@ -48,6 +49,10 @@ type ComplexityRoot struct {
 	Carrier struct {
 		Name        func(childComplexity int) int
 		TrackingURL func(childComplexity int) int
+	}
+
+	Mutation struct {
+		CreateShipment func(childComplexity int, input model.NewShipmentInput) int
 	}
 
 	Query struct {
@@ -65,6 +70,9 @@ type ComplexityRoot struct {
 	}
 }
 
+type MutationResolver interface {
+	CreateShipment(ctx context.Context, input model.NewShipmentInput) (*model.Shipment, error)
+}
 type QueryResolver interface {
 	Shipments(ctx context.Context, origin *string) ([]*model.Shipment, error)
 	Health(ctx context.Context) (string, error)
@@ -102,6 +110,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Carrier.TrackingURL(childComplexity), true
+
+	case "Mutation.createShipment":
+		if e.complexity.Mutation.CreateShipment == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createShipment_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.CreateShipment(childComplexity, args["input"].(model.NewShipmentInput)), true
 
 	case "Query.health":
 		if e.complexity.Query.Health == nil {
@@ -171,7 +191,10 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
-	inputUnmarshalMap := graphql.BuildUnmarshalerMap()
+	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputCarrierInput,
+		ec.unmarshalInputNewShipmentInput,
+	)
 	first := true
 
 	switch opCtx.Operation.Operation {
@@ -204,6 +227,21 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			}
 
 			return &response
+		}
+	case ast.Mutation:
+		return func(ctx context.Context) *graphql.Response {
+			if !first {
+				return nil
+			}
+			first = false
+			ctx = graphql.WithUnmarshalerMap(ctx, inputUnmarshalMap)
+			data := ec._Mutation(ctx, opCtx.Operation.SelectionSet)
+			var buf bytes.Buffer
+			data.MarshalGQL(&buf)
+
+			return &graphql.Response{
+				Data: buf.Bytes(),
+			}
 		}
 
 	default:
@@ -262,7 +300,6 @@ type Shipment {
   eta: String!
   carrier: Carrier!
 }
-
 #ENUM........
 enum ShipmentStatus {
   IN_TRANSIT
@@ -279,6 +316,22 @@ type Query {
   shipments(origin: String): [Shipment!]!
   health: String!
 }
+input NewShipmentInput {
+  status: ShipmentStatus!
+  origin: String!
+  destination: String!
+  eta: String!
+  carrier: CarrierInput!
+}
+
+input CarrierInput {
+  name: String!
+  trackingUrl: String!
+}
+
+type Mutation {
+  createShipment(input: NewShipmentInput!): Shipment!
+}
 `, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
@@ -286,6 +339,34 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) field_Mutation_createShipment_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_createShipment_argsInput(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_createShipment_argsInput(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (model.NewShipmentInput, error) {
+	if _, ok := rawArgs["input"]; !ok {
+		var zeroVal model.NewShipmentInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+	if tmp, ok := rawArgs["input"]; ok {
+		return ec.unmarshalNNewShipmentInput2githubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐNewShipmentInput(ctx, tmp)
+	}
+
+	var zeroVal model.NewShipmentInput
+	return zeroVal, nil
+}
 
 func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -547,6 +628,75 @@ func (ec *executionContext) fieldContext_Carrier_trackingUrl(_ context.Context, 
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
 		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createShipment(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_createShipment(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().CreateShipment(rctx, fc.Args["input"].(model.NewShipmentInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Shipment)
+	fc.Result = res
+	return ec.marshalNShipment2ᚖgithubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐShipment(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_createShipment(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Shipment_id(ctx, field)
+			case "status":
+				return ec.fieldContext_Shipment_status(ctx, field)
+			case "origin":
+				return ec.fieldContext_Shipment_origin(ctx, field)
+			case "destination":
+				return ec.fieldContext_Shipment_destination(ctx, field)
+			case "eta":
+				return ec.fieldContext_Shipment_eta(ctx, field)
+			case "carrier":
+				return ec.fieldContext_Shipment_carrier(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Shipment", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createShipment_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -3016,6 +3166,95 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputCarrierInput(ctx context.Context, obj any) (model.CarrierInput, error) {
+	var it model.CarrierInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"name", "trackingUrl"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "name":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Name = data
+		case "trackingUrl":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("trackingUrl"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.TrackingURL = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputNewShipmentInput(ctx context.Context, obj any) (model.NewShipmentInput, error) {
+	var it model.NewShipmentInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"status", "origin", "destination", "eta", "carrier"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "status":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("status"))
+			data, err := ec.unmarshalNShipmentStatus2githubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐShipmentStatus(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Status = data
+		case "origin":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("origin"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Origin = data
+		case "destination":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("destination"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Destination = data
+		case "eta":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("eta"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Eta = data
+		case "carrier":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("carrier"))
+			data, err := ec.unmarshalNCarrierInput2ᚖgithubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐCarrierInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Carrier = data
+		}
+	}
+
+	return it, nil
+}
+
 // endregion **************************** input.gotpl *****************************
 
 // region    ************************** interface.gotpl ***************************
@@ -3042,6 +3281,55 @@ func (ec *executionContext) _Carrier(ctx context.Context, sel ast.SelectionSet, 
 			}
 		case "trackingUrl":
 			out.Values[i] = ec._Carrier_trackingUrl(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var mutationImplementors = []string{"Mutation"}
+
+func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, mutationImplementors)
+	ctx = graphql.WithFieldContext(ctx, &graphql.FieldContext{
+		Object: "Mutation",
+	})
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		innerCtx := graphql.WithRootFieldContext(ctx, &graphql.RootFieldContext{
+			Object: field.Name,
+			Field:  field,
+		})
+
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Mutation")
+		case "createShipment":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createShipment(ctx, field)
+			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -3587,6 +3875,11 @@ func (ec *executionContext) marshalNCarrier2ᚖgithubᚗcomᚋTanmoy095ᚋLogiSy
 	return ec._Carrier(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNCarrierInput2ᚖgithubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐCarrierInput(ctx context.Context, v any) (*model.CarrierInput, error) {
+	res, err := ec.unmarshalInputCarrierInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalID(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -3601,6 +3894,15 @@ func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.Selec
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNNewShipmentInput2githubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐNewShipmentInput(ctx context.Context, v any) (model.NewShipmentInput, error) {
+	res, err := ec.unmarshalInputNewShipmentInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNShipment2githubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐShipment(ctx context.Context, sel ast.SelectionSet, v model.Shipment) graphql.Marshaler {
+	return ec._Shipment(ctx, sel, &v)
 }
 
 func (ec *executionContext) marshalNShipment2ᚕᚖgithubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐShipmentᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Shipment) graphql.Marshaler {

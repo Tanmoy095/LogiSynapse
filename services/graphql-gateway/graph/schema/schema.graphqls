@@ -7,7 +7,6 @@ type Shipment {
   eta: String!
   carrier: Carrier!
 }
-
 #ENUM........
 enum ShipmentStatus {
   IN_TRANSIT
@@ -23,4 +22,20 @@ type Carrier {
 type Query {
   shipments(origin: String): [Shipment!]!
   health: String!
+}
+input NewShipmentInput {
+  status: ShipmentStatus!
+  origin: String!
+  destination: String!
+  eta: String!
+  carrier: CarrierInput!
+}
+
+input CarrierInput {
+  name: String!
+  trackingUrl: String!
+}
+
+type Mutation {
+  createShipment(input: NewShipmentInput!): Shipment!
 }
