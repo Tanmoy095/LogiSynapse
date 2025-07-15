@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package shipment;
+
+option go_package = "github.com/Tanmoy095/LogiSynapse/shipment-service/proto;proto";
+
+message Carrier {
+  string name = 1;
+  string tracking_url = 2;
+}
+
+message Shipment {
+  string id = 1;
+  string origin = 2;
+  string destination = 3;
+  string eta = 4;
+  string status = 5;
+  Carrier carrier = 6;
+}
+
+message GetShipmentsRequest {
+  string origin = 1;
+  string status = 2;
+  string destination = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message GetShipmentsResponse {
+  repeated Shipment shipments = 1;
+}
+
+message CreateShipmentRequest {
+  string origin = 1;
+  string destination = 2;
+  string eta = 3;
+  string status = 4;
+  Carrier carrier = 5;
+}
+
+message CreateShipmentResponse {
+  Shipment shipment = 1;
+}
+
+service ShipmentService {
+  rpc GetShipments(GetShipmentsRequest) returns (GetShipmentsResponse);
+  rpc CreateShipment(CreateShipmentRequest) returns (CreateShipmentResponse);
+}
