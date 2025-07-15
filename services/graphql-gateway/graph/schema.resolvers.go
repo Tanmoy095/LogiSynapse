@@ -13,7 +13,31 @@ import (
 	"github.com/google/uuid"
 )
 
-var shipments []*model.Shipment
+// In-memory store for shipments, initialized with hardcoded data
+var shipments = []*model.Shipment{
+	{
+		ID:          "1",
+		Status:      model.ShipmentStatusInTransit, // Use enum value
+		Origin:      "Dhaka",
+		Destination: "Berlin",
+		Eta:         "2025-07-15",
+		Carrier: &model.Carrier{
+			Name:        "DHL",
+			TrackingURL: "https://dhl.com/track/123",
+		},
+	},
+	{
+		ID:          "2",
+		Status:      model.ShipmentStatusDelivered, // Use enum value
+		Origin:      "Chittagong",
+		Destination: "Munich",
+		Eta:         "2025-07-10",
+		Carrier: &model.Carrier{
+			Name:        "DHL",
+			TrackingURL: "https://dhl.com/track/123",
+		},
+	},
+}
 
 // CreateShipment is the resolver for the createShipment field.
 func (r *mutationResolver) CreateShipment(ctx context.Context, input model.NewShipmentInput) (*model.Shipment, error) {
@@ -35,47 +59,67 @@ func (r *mutationResolver) CreateShipment(ctx context.Context, input model.NewSh
 }
 
 // Now implement Query resolver methods on queryResolver
-func (r *queryResolver) Shipments(ctx context.Context, origin *string) ([]*model.Shipment, error) {
-	allShipments := []*model.Shipment{
-		{
-			ID:          "1",
-			Status:      "In Transit",
-			Origin:      "Dhaka",
-			Destination: "Berlin",
-			Eta:         "2025-07-15",
-			Carrier: &model.Carrier{
-				Name:        "DHL",
-				TrackingURL: "https://dhl.com/track/123",
-			},
-		},
-		{
-			ID:          "2",
-			Status:      "Delivered",
-			Origin:      "Chittagong",
-			Destination: "Munich",
-			Eta:         "2025-07-10",
-			Carrier: &model.Carrier{
-				Name:        "DHL",
-				TrackingURL: "https://dhll.com/track/123",
-			},
-		},
-	}
-	shipments := append(shipments, allShipments...)
+func (r *queryResolver) Shipments(ctx context.Context, origin *string, status *model.ShipmentStatus, destination *string, limit *int, offset *int) ([]*model.Shipment, error) {
+	// Set default pagination values
+	lim := 10
+	if limit != nil {
+		lim = *limit
 
-	// If no origin is provided, return all
-	if origin == nil {
-		return shipments, nil
+	}
+	off := 0
+	if offset != nil {
+		off = *offset
+
 	}
 
-	// Filter by origin
-	var filtered []*model.Shipment
-	for _, shipment := range shipments {
-		if shipment.Origin == *origin {
-			filtered = append(filtered, shipment)
+	//start with all shipments..............
+	filtered := shipments
+
+	// Apply all Filter  if  any parameter provided
+
+	if origin != nil || status != nil || destination != nil {
+		var temp []*model.Shipment
+		for _, shipment := range shipments {
+			//check shipments matches all provided filters..
+			matches := true
+			if origin != nil && shipment.Origin != *origin {
+				matches = false
+
+			}
+			if status != nil && shipment.Status != *status {
+				matches = false
+			}
+			if destination != nil && shipment.Destination != *destination {
+				matches = false
+			}
+			// Include shipment if it matches all filters
+			if matches {
+				temp = append(temp, shipment)
+			}
 		}
+
+	} else {
+
+		filtered = shipments // No filter, use all shipments
 	}
 
-	return filtered, nil
+	// Apply pagination
+	// Ensure offset is valid (not negative or beyond the list length)
+	if off < 0 || off > len(filtered) {
+		return []*model.Shipment{}, nil //Return empty list for invalid offset
+	}
+	// Ensure limit is non-negative
+	if lim < 0 {
+		lim = 0
+	}
+	// Calculate the end index for slicing (offset + limit)
+	end := lim + off
+	if end > len(filtered) {
+		end = len(filtered) // Don’t exceed the list length
+
+	}
+	// Return the paginated slice (e.g., filtered[0:10] for first 10 items)
+	return filtered[off:end], nil
 }
 
 // Health is the resolver for the health field.
@@ -91,3 +135,36 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//    it when you're done.
+//  - You have helper methods in this file. Move them out to keep these resolver files clean.
+/*
+	var shipments = []*model.Shipment{
+	{
+		ID:          "1",
+		Status:      model.ShipmentStatusInTransit, // Use enum value
+		Origin:      "Dhaka",
+		Destination: "Berlin",
+		Eta:         "2025-07-15",
+		Carrier: &model.Carrier{
+			Name:        "DHL",
+			TrackingURL: "https://dhl.com/track/123",
+		},
+	},
+	{
+		ID:          "2",
+		Status:      model.ShipmentStatusDelivered, // Use enum value
+		Origin:      "Chittagong",
+		Destination: "Munich",
+		Eta:         "2025-07-10",
+		Carrier: &model.Carrier{
+			Name:        "DHL",
+			TrackingURL: "https://dhl.com/track/123",
+		},
+	},
+}
+*/

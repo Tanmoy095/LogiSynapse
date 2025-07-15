@@ -20,9 +20,16 @@ type Carrier {
 }
 
 type Query {
-  shipments(origin: String): [Shipment!]!
+  shipments(
+    origin: String
+    status: ShipmentStatus
+    destination: String
+    limit: Int = 10
+    offset: Int = 0
+  ): [Shipment!]!
   health: String!
 }
+
 input NewShipmentInput {
   status: ShipmentStatus!
   origin: String!

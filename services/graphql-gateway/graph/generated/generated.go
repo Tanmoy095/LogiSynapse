@@ -57,7 +57,7 @@ type ComplexityRoot struct {
 
 	Query struct {
 		Health    func(childComplexity int) int
-		Shipments func(childComplexity int, origin *string) int
+		Shipments func(childComplexity int, origin *string, status *model.ShipmentStatus, destination *string, limit *int, offset *int) int
 	}
 
 	Shipment struct {
@@ -74,7 +74,7 @@ type MutationResolver interface {
 	CreateShipment(ctx context.Context, input model.NewShipmentInput) (*model.Shipment, error)
 }
 type QueryResolver interface {
-	Shipments(ctx context.Context, origin *string) ([]*model.Shipment, error)
+	Shipments(ctx context.Context, origin *string, status *model.ShipmentStatus, destination *string, limit *int, offset *int) ([]*model.Shipment, error)
 	Health(ctx context.Context) (string, error)
 }
 
@@ -140,7 +140,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Query.Shipments(childComplexity, args["origin"].(*string)), true
+		return e.complexity.Query.Shipments(childComplexity, args["origin"].(*string), args["status"].(*model.ShipmentStatus), args["destination"].(*string), args["limit"].(*int), args["offset"].(*int)), true
 
 	case "Shipment.carrier":
 		if e.complexity.Shipment.Carrier == nil {
@@ -313,9 +313,16 @@ type Carrier {
 }
 
 type Query {
-  shipments(origin: String): [Shipment!]!
+  shipments(
+    origin: String
+    status: ShipmentStatus
+    destination: String
+    limit: Int = 10
+    offset: Int = 0
+  ): [Shipment!]!
   health: String!
 }
+
 input NewShipmentInput {
   status: ShipmentStatus!
   origin: String!
@@ -404,6 +411,26 @@ func (ec *executionContext) field_Query_shipments_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["origin"] = arg0
+	arg1, err := ec.field_Query_shipments_argsStatus(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["status"] = arg1
+	arg2, err := ec.field_Query_shipments_argsDestination(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["destination"] = arg2
+	arg3, err := ec.field_Query_shipments_argsLimit(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg3
+	arg4, err := ec.field_Query_shipments_argsOffset(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["offset"] = arg4
 	return args, nil
 }
 func (ec *executionContext) field_Query_shipments_argsOrigin(
@@ -421,6 +448,78 @@ func (ec *executionContext) field_Query_shipments_argsOrigin(
 	}
 
 	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_shipments_argsStatus(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*model.ShipmentStatus, error) {
+	if _, ok := rawArgs["status"]; !ok {
+		var zeroVal *model.ShipmentStatus
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("status"))
+	if tmp, ok := rawArgs["status"]; ok {
+		return ec.unmarshalOShipmentStatus2ᚖgithubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐShipmentStatus(ctx, tmp)
+	}
+
+	var zeroVal *model.ShipmentStatus
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_shipments_argsDestination(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["destination"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("destination"))
+	if tmp, ok := rawArgs["destination"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_shipments_argsLimit(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["limit"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+	if tmp, ok := rawArgs["limit"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_shipments_argsOffset(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["offset"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("offset"))
+	if tmp, ok := rawArgs["offset"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
 	return zeroVal, nil
 }
 
@@ -715,7 +814,7 @@ func (ec *executionContext) _Query_shipments(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Shipments(rctx, fc.Args["origin"].(*string))
+		return ec.resolvers.Query().Shipments(rctx, fc.Args["origin"].(*string), fc.Args["status"].(*model.ShipmentStatus), fc.Args["destination"].(*string), fc.Args["limit"].(*int), fc.Args["offset"].(*int))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -4266,6 +4365,40 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	_ = ctx
 	res := graphql.MarshalBoolean(*v)
 	return res
+}
+
+func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalInt(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.SelectionSet, v *int) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalInt(*v)
+	return res
+}
+
+func (ec *executionContext) unmarshalOShipmentStatus2ᚖgithubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐShipmentStatus(ctx context.Context, v any) (*model.ShipmentStatus, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.ShipmentStatus)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOShipmentStatus2ᚖgithubᚗcomᚋTanmoy095ᚋLogiSynapseᚋgraphqlᚑgatewayᚋgraphᚋmodelᚐShipmentStatus(ctx context.Context, sel ast.SelectionSet, v *model.ShipmentStatus) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
 }
 
 func (ec *executionContext) unmarshalOString2ᚖstring(ctx context.Context, v any) (*string, error) {
