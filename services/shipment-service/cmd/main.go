@@ -1,3 +1,4 @@
+// cmd/main.go
 package main
 
 import (
@@ -12,17 +13,22 @@ import (
 )
 
 func main() {
-	//initialize store and service..
-
+	// Initialize the in-memory store (implements ShipmentStore interface)
+	// Analogy: Set up the pantry shelf for the chef to use
 	store := store.NewMemoryStore()
-	svc := service.NewShipmenmtService(store)
-	//set up grpc server ...
+
+	// Initialize the service with the store
+	svc := service.NewShipmentService(store)
+
+	// Set up gRPC server
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+
 	s := grpc.NewServer()
 	proto.RegisterShipmentServiceServer(s, grpcServer.NewShipmentServer(svc))
+
 	log.Println("gRPC server running on :50051")
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)

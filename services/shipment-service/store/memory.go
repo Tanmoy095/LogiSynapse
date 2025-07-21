@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"sync"
 
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
@@ -17,14 +18,26 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-func (s *MemoryStore) Create(shipment models.Shipment) error {
+func (s *MemoryStore) CreateShipment(ctx context.Context, shipment models.Shipment) error {
+	// Check if the context is canceled or timed out
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.shipments[shipment.ID] = shipment
 	return nil
 
 }
-func (s *MemoryStore) GetAll(origin, status, destination string, limit, offset int32) ([]models.Shipment, error) {
+func (s *MemoryStore) GetShipments(ctx context.Context, origin, status, destination string, limit, offset int32) ([]models.Shipment, error) {
+	// Check if the context is canceled or timed out
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []models.Shipment
