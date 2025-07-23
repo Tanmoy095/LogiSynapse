@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
+	_ "github.com/lib/pq"
 )
 
 // PostgresStore manages database operations for the Shipment Service

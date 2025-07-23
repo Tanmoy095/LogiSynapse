@@ -1,4 +1,6 @@
 -- +goose Up
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS shipments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     origin TEXT NOT NULL,
@@ -11,3 +13,4 @@ CREATE TABLE IF NOT EXISTS shipments (
 
 -- +goose Down
 DROP TABLE IF EXISTS shipments;
+DROP EXTENSION IF EXISTS pgcrypto;

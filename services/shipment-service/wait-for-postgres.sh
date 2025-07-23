@@ -26,4 +26,4 @@ fi
 
 # Run the command (e.g., migrations and service)
 echo "Postgres is ready - executing command"
-exec $cmd.
+exec $cmd

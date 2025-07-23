@@ -1,31 +1,28 @@
-#Use go 1.24 to match go.mod
-
+# Use Go 1.24 to match go.mod requirement
 FROM golang:1.24 AS builder
 
-#install postgresSQL client-tool  for pg is_ready
+# Install PostgreSQL client tools for pg_isready
 RUN apt-get update && apt-get install -y postgresql-client
 
-#set working directory
+# Set working directory
 WORKDIR /app
 
-#Copy go.mod go.sum for dependency catching..
-
+# Copy go.mod and go.sum for dependency caching
 COPY go.mod go.sum ./
-RUN go mod download      
-#download dependencies to save times in future buildsw
-#copy source code
+RUN go mod download
+
+# Copy source code
 COPY . .
-#build the binary
+
+# Install goose for migrations
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+
+# Build the binary
 RUN go build -o shipment-service ./cmd
 
-# copy and make wait for postgres.sh
+# Copy and make wait-for-postgres.sh executable
 COPY wait-for-postgres.sh .
 RUN chmod +x wait-for-postgres.sh
 
-#Command (ovverridden in docker-compose.yml)
+# Command (overridden in docker-compose.yaml)
 CMD ["./shipment-service"]
-
-
-
-
-
