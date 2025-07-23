@@ -18,17 +18,17 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-func (s *MemoryStore) CreateShipment(ctx context.Context, shipment models.Shipment) error {
+func (s *MemoryStore) CreateShipment(ctx context.Context, shipment models.Shipment) (models.Shipment, error) {
 	// Check if the context is canceled or timed out
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
+	// select {
+	// case <-ctx.Done():
+	// 	return ctx.Err()
+	// default:
+	// }
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.shipments[shipment.ID] = shipment
-	return nil
+	return shipment, nil
 
 }
 func (s *MemoryStore) GetShipments(ctx context.Context, origin, status, destination string, limit, offset int32) ([]models.Shipment, error) {

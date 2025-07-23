@@ -16,5 +16,5 @@ type ShipmentStore interface {
 	GetShipments(ctx context.Context, origin, status, destination string, limit, offset int32) ([]models.Shipment, error)
 
 	// CreateShipment adds a new shipment to the store.
-	CreateShipment(ctx context.Context, shipment models.Shipment) error
+	CreateShipment(ctx context.Context, shipment models.Shipment) (models.Shipment, error)
 }

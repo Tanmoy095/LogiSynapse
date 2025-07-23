@@ -2,12 +2,10 @@ package grpcServer
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/service"
-	"github.com/google/uuid"
 )
 
 /* gRPC server struct that implements the ShipmentService interface.....
@@ -62,7 +60,7 @@ func (s *ShipmentServer) CreateShipment(ctx context.Context, req *proto.CreateSh
 	// Convert the gRPC request (proto.CreateShipmentRequest) to an internal models.Shipment
 	shipment := toModelShipment(req)
 	// Call the business logic to create the shipment (includes validation and storage)
-	created, err := s.service.CreateShipment(shipment)
+	created, err := s.service.CreateShipment(ctx, shipment)
 	if err != nil {
 		return nil, err
 
@@ -93,7 +91,7 @@ func toProtoShipment(s models.Shipment) *proto.Shipment {
 func toModelShipment(req *proto.CreateShipmentRequest) models.Shipment {
 	return models.Shipment{
 		// Generate a unique ID for the shipment
-		ID:          generateID(),
+		ID:          "",
 		Origin:      req.Origin,
 		Destination: req.Destination,
 		ETA:         req.Eta,
@@ -107,7 +105,3 @@ func toModelShipment(req *proto.CreateShipmentRequest) models.Shipment {
 
 // generateID creates a unique ID for a new shipment.
 // This is a placeholder; in production, use a robust UUID library (e.g., github.com/google/uuid)
-func generateID() string {
-	id := uuid.New()
-	return fmt.Sprintf("shipment-%s", id.String())
-}

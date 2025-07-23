@@ -1,0 +1,64 @@
+version: "3.9" #specifies docker-compose version
+
+services:
+  postgres:
+    image: postgres:15 #use the official postgres image
+    container_name: postgres #name the container for reference
+    environment: #set environment variables for postgres
+      POSTGRES_USER: ${DB_USER} #username from .env
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - loginet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  shipment-service:
+    build:
+      context: ./services/shipment-service
+      dockerfile: Dockerfile
+    container_name: shipment-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./services/shipment-service/db/migrations:/migrations
+    networks:
+      - loginet
+    entrypoint: ["/bin/sh", "-c", "./entrypoint.sh"]
+
+  graphql-gateway:
+    build:
+      context: ./services/graphql-gateway
+      dockerfile: Dockerfile
+    container_name: graphql-gateway
+    env_file:
+      - .env
+    environment:
+      - SHIPMENT_SERVICE_ADDR=shipment-service:50051
+    ports:
+      - "8080:8080"
+    networks:
+      - loginet
+    depends_on:
+      - shipment-service
+
+volumes:
+  postgres_data:
+
+networks:
+  loginet:
+    driver: bridge

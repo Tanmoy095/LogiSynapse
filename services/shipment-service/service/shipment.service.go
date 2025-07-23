@@ -22,17 +22,13 @@ func NewShipmentService(store store.ShipmentStore) *ShipmentService {
 }
 
 // CreateShipment validates and stores a new shipment.
-func (s *ShipmentService) CreateShipment(shipment models.Shipment) (models.Shipment, error) {
+func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Shipment) (models.Shipment, error) {
 	// Basic validation
-	if shipment.ID == "" || shipment.Origin == "" || shipment.Destination == "" {
+	if shipment.Origin == "" || shipment.Destination == "" {
 		return models.Shipment{}, errors.New("missing required fields")
 	}
 	// Store the shipment using the interface
-	err := s.store.CreateShipment(context.Background(), shipment)
-	if err != nil {
-		return models.Shipment{}, err
-	}
-	return shipment, nil
+	return s.store.CreateShipment(ctx, shipment)
 }
 
 // GetShipments retrieves shipments based on filters and pagination.
