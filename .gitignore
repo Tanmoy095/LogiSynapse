@@ -1,0 +1,58 @@
+# Ignore compiled binaries and executables
+# Prevents uploading compiled Go binaries (e.g., shipment-service, graphql-gateway)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+build/
+
+# Ignore Go build artifacts
+# Excludes temporary files generated during Go builds
+*.test
+*.prof
+*.cover
+coverage.out
+
+# Ignore vendor directory (if using vendored dependencies)
+vendor/
+
+# Ignore environment files
+# Prevents sensitive data like DB credentials in .env from being committed
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Ignore Docker artifacts
+# Excludes Docker build cache and temporary files
+*.dockerignore
+Dockerfile.*
+*.log
+*.tar
+*.tar.gz
+
+# Ignore editor and IDE files
+# Excludes configuration files for common editors/IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# Ignore OS-generated files
+# Excludes system files like .DS_Store (macOS) or Thumbs.db (Windows)
+.DS_Store
+Thumbs.db
+
+# Ignore temporary files
+# Excludes temp files created during development
+*.tmp
+*.bak
+*.backup
+
+# Ignore database data directories
+# Prevents committing local Postgres data (handled by Docker volumes)
+postgres_data/
