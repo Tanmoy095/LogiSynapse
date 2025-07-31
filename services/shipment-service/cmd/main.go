@@ -8,6 +8,7 @@ import (
 
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/config"
 	grpcServer "github.com/Tanmoy095/LogiSynapse/shipment-service/handler/grpc"
+	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/kafka"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/service"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/store"
@@ -19,6 +20,13 @@ func main() {
 	// Load configuration from environment variables using the config package
 	// This retrieves database credentials (e.g., DB_USER, DB_PASSWORD, DB_HOST)
 	cfg := config.LoadConfig()
+	// Initialize Kafka producer for publishing shipment.created events.
+	broker := cfg.KAFKA_BROKER
+	topic := cfg.KAFKA_TOPIC
+	if broker == "" || topic == "" {
+		log.Fatal("❌ Missing KAFKA_BROKER or KAFKA_TOPIC")
+	}
+	producer := kafka.NewKafKaProducer(broker, topic)
 
 	// Open a connection to the PostgreSQL database using the connection string from cfg
 	// Note: This connection is redundant since NewPostgresStore also opens a connection
@@ -42,7 +50,7 @@ func main() {
 
 	// Initialize the ShipmentService, which contains the business logic
 	// It uses the PostgresStore to interact with the database
-	svc := service.NewShipmentService(store)
+	svc := service.NewShipmentService(store, producer)
 
 	// Create a TCP listener on port 50051 for the gRPC server
 	// This is where the service will listen for incoming gRPC requests
