@@ -1,24 +1,28 @@
 package models
 
 /*
-This model is the kitchen’s recipe card. It’s a clean, reusable definition of a shipment
-that both the business logic (service) and gRPC handler can use. It avoids direct dependency
-on proto-generated structs, which are specific to gRPC.
-
-The waiter (GraphQL) and kitchen (gRPC service) need to agree on what a “dish” (shipment)
-looks like. This model is the standard recipe card they both understand.
+Stores Data afrom ghraphql mutation and shipoo Api for database and Kafkla........
 */
 
-type Carrier struct {
-	Name        string
-	TrackingURL string
+type Shipment struct {
+	ID             string //uuid for the shipment
+	Origin         string
+	Destination    string
+	ETA            string  //estimated arrival date
+	Status         string  //status like pre_transit,delivered,cancelled
+	Carrier        Carrier //Carrier details like traackin url and and carrier name
+	TrackingNumber string  //Shipoo's tracking number --> e.g., "1232343543454564
+	//package dimensions from mutation for accurate shipment costs ....Basically use for rates ...
+	Length float64
+	Width  float64
+	Height float64
+	Weight float64
+	Unit   string //unit means inch,cm,m,lb
+
 }
 
-type Shipment struct {
-	ID          string
-	Origin      string
-	Destination string
-	ETA         string
-	Status      string
-	Carrier     Carrier
+// Carrier Represents carrier details separated for flexibility in  Shipoo Integration
+type Carrier struct {
+	Name        string //Carrier name like Fedex
+	TrackingURL string //e.g-->shipoo.com/track/1233214345434
 }

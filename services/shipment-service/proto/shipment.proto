@@ -2,13 +2,16 @@ syntax = "proto3";
 
 package shipment;
 
+//Ensure generated code is importable
 option go_package = "github.com/Tanmoy095/LogiSynapse/shipment-service/proto;proto";
 
+//Carrier details
 message Carrier {
   string name = 1;
   string tracking_url = 2;
 }
 
+//Define structure for shipment operation....
 message Shipment {
   string id = 1;
   string origin = 2;
@@ -16,8 +19,25 @@ message Shipment {
   string eta = 4;
   string status = 5;
   Carrier carrier = 6;
+  string tracking_number=7;
+  double length=8;
+  double width = 9;
+  double height = 10;
+  double weight = 11;
+  string unit =12;
 }
 
+// Rate message for carrier rates
+// Why: Supports rate comparison feature
+message Rate {
+    string carrier = 1;       // e.g., "fedex"
+    string service = 2;       // e.g., "FedEx Ground"
+    double amount = 3;        // Cost in USD
+    int32 estimated_days = 4; // Delivery time
+}
+
+//GetShipmentsRequest for fetching shipments
+// Why: Supports filtered queries with pagination
 message GetShipmentsRequest {
   string origin = 1;
   string status = 2;
@@ -25,24 +45,90 @@ message GetShipmentsRequest {
   int32 limit = 4;
   int32 offset = 5;
 }
-
+//GetShipmentResponse  returns list of shipments
+//Provide query results to client
 message GetShipmentsResponse {
   repeated Shipment shipments = 1;
 }
 
+
+//CreateShipmentRequest for creating shipment 
+//Define input for creating operations 
 message CreateShipmentRequest {
   string origin = 1;
   string destination = 2;
   string eta = 3;
   string status = 4;
   Carrier carrier = 5;
+  double length=6;
+  double width = 7;
+  double height = 8;
+  double weight = 9;
+  string unit =10;
 }
-
+// CreateShipmentResponse returns created shipment
+//return created shipment to client
 message CreateShipmentResponse {
   Shipment shipment = 1;
 }
+//UpdateShipmentRequest for updating Shipment
+//Define input for  update operation
+message UpdateShipmentRequest {
+  string id =1;
+  string origin = 2;
+  string destination = 3;
+  string eta = 4;
+  Carrier carrier = 5;
+  double length=6;
+  double width = 7;
+  double height = 8;
+  double weight = 9;
+  string unit =10;
 
+}
+//return updated results to client
+message UpdateShipmentResponse {
+  Shipment shipment=1;
+}
+
+//Delete ShipmentRequest from cancelling shipment
+//Define input for delete operation 
+
+message DeleteShipmentRequest{
+  string id =1;
+}
+
+message DeleteShipmentResponse{
+
+  bool success  =1;
+}
+
+//Get_Rate_Request for fetching carrier rates
+//input for rate comparison
+message GetRatesRequest{
+  string origin = 1;
+  string destination = 2;
+  double length=3;
+  double width = 4;
+  double height = 5;
+  double weight = 6;
+  string unit =7;
+} 
+
+//Provide rate options to client
+message GetRatesResponse{
+  repeated Rate rates = 1;
+}
+
+
+
+
+//ShipmentService Defines Grpc interface
+//Enable Communication with Grpc Request
 service ShipmentService {
   rpc GetShipments(GetShipmentsRequest) returns (GetShipmentsResponse);
   rpc CreateShipment(CreateShipmentRequest) returns (CreateShipmentResponse);
+  rpc UpdateShipment(UpdateShipmentRequest) returns (UpdateShipmentResponse);
+  rpc DeleteShipment(DeleteShipmentRequest) returns (DeleteShipmentResponse);
+  rpc GetRates(GetRatesRequest) returns (GetRatesResponse);
 }
