@@ -11,7 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/kafka"
+	pkgkafka "github.com/Tanmoy095/LogiSynapse/pkg/kafka"
+	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/store"
 )
@@ -20,14 +21,14 @@ import (
 // Analogy: The chef who uses the pantry (store) to prepare dishes (shipments).
 type ShipmentService struct {
 	store      store.ShipmentStore // Use interface instead of concrete MemoryStore
-	producer   *kafka.KafkaProducer
+	producer   pkgkafka.Publisher
 	shippoKey  string
 	httpClient *http.Client
 }
 
 // NewShipmentService creates a new service with the given store.
 // Analogy: Hires a chef and gives them access to the pantry's menu (interface).
-func NewShipmentService(store store.ShipmentStore, producer *kafka.KafkaProducer) *ShipmentService {
+func NewShipmentService(store store.ShipmentStore, producer pkgkafka.Publisher) *ShipmentService {
 	return &ShipmentService{
 		store:     store,
 		producer:  producer,
@@ -129,7 +130,8 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Sh
 	//Replace static data with shippo Data
 	shipment.ID = shippoResp.ObjectID
 	shipment.TrackingNumber = shippoResp.TrackingNumber
-	shipment.Status = shippoResp.Status
+	// Map Shippo status string to proto enum
+	shipment.Status = mapShippoStatusToProto(shippoResp.Status)
 	shipment.Carrier = models.Carrier{
 		Name:        shipment.Carrier.Name,
 		TrackingURL: shipment.Carrier.TrackingURL,
@@ -157,7 +159,9 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Sh
 	}
 	// Publish the event to Kafka in a goroutine for fire-and-forget.
 	// Uses the shipment ID as the key to ensure ordered processing in partitions.
-	go s.producer.Publish(context.Background(), created.ID, event)
+	if s.producer != nil {
+		go s.producer.Publish(context.Background(), created.ID, event)
+	}
 
 	// Return the created shipment for the gRPC response.
 	return created, nil
@@ -178,7 +182,7 @@ func (s *ShipmentService) Updateshipment(ctx context.Context, shipment models.Sh
 		return models.Shipment{}, errors.New("missing shipment id")
 
 	}
-	if shipment.Origin == "" && shipment.Destination == "" && shipment.ETA == "" && shipment.Length == 0 {
+	if shipment.Origin == "" && shipment.Destination == "" && shipment.Eta == "" && shipment.Length == 0 {
 
 		return models.Shipment{}, errors.New("no fields to update")
 
@@ -192,7 +196,7 @@ func (s *ShipmentService) Updateshipment(ctx context.Context, shipment models.Sh
 
 	//Prevents update if not pre_transit
 
-	if current.Status != "PRE_TRANSIT" {
+	if current.Status != proto.ShipmentStatus_PRE_TRANSIT {
 		return models.Shipment{}, errors.New("can only update pre_Transit shipment")
 
 	}
@@ -202,7 +206,7 @@ func (s *ShipmentService) Updateshipment(ctx context.Context, shipment models.Sh
 		ID:             shipment.ID,
 		Origin:         ifEmpty(shipment.Origin, current.Origin),
 		Destination:    ifEmpty(shipment.Destination, current.Destination),
-		ETA:            ifEmpty(shipment.ETA, current.ETA),
+		Eta:            ifEmpty(shipment.Eta, current.Eta),
 		Status:         current.Status,
 		Carrier:        models.Carrier{Name: ifEmpty(shipment.Carrier.Name, current.Carrier.Name), TrackingURL: current.Carrier.TrackingURL},
 		TrackingNumber: current.TrackingNumber,
@@ -222,7 +226,9 @@ func (s *ShipmentService) Updateshipment(ctx context.Context, shipment models.Sh
 		"event":   "shipment.updated",
 		"payload": updatedShipment,
 	}
-	go s.producer.Publish(ctx, updatedShipment.ID, event)
+	if s.producer != nil {
+		go s.producer.Publish(ctx, updatedShipment.ID, event)
+	}
 	return updatedShipment, nil
 
 }
@@ -239,7 +245,7 @@ func (s *ShipmentService) DeleteShipment(ctx context.Context, id string) error {
 
 	// Prevent deletion if not PRE_TRANSIT
 	// Why: Matches real-world logistics restrictions
-	if shipment.Status != "PRE_TRANSIT" {
+	if shipment.Status != proto.ShipmentStatus_PRE_TRANSIT {
 		return errors.New("can only delete PRE_TRANSIT shipments")
 	}
 
@@ -264,7 +270,7 @@ func (s *ShipmentService) DeleteShipment(ctx context.Context, id string) error {
 
 	// Update status to CANCELLED
 	// Why: Marks shipment as canceled in database using UpdateShipment
-	shipment.Status = "CANCELLED"
+	shipment.Status = proto.ShipmentStatus_CANCELLED
 	if err := s.store.UpdateShipment(ctx, shipment); err != nil {
 		return err
 	}
@@ -275,7 +281,9 @@ func (s *ShipmentService) DeleteShipment(ctx context.Context, id string) error {
 		"event":   "shipment.cancelled",
 		"payload": shipment,
 	}
-	go s.producer.Publish(ctx, id, event)
+	if s.producer != nil {
+		go s.producer.Publish(ctx, id, event)
+	}
 
 	return nil
 }
@@ -284,8 +292,26 @@ func (s *ShipmentService) DeleteShipment(ctx context.Context, id string) error {
 // Why: Enables clients to compare shipping options, like Amazon’s checkout.
 // Note: Doesn’t use store since it’s an API call.
 
-func (s *ShipmentService) GetShipments(origin, status, destination string, limit, offset int32) ([]models.Shipment, error) {
+func (s *ShipmentService) GetShipments(origin string, status proto.ShipmentStatus, destination string, limit, offset int32) ([]models.Shipment, error) {
 	return s.store.GetShipments(context.Background(), origin, status, destination, limit, offset)
+}
+
+// mapShippoStatusToProto maps Shippo status strings to the proto ShipmentStatus enum
+func mapShippoStatusToProto(s string) proto.ShipmentStatus {
+	switch s {
+	case "PRE_TRANSIT":
+		return proto.ShipmentStatus_PRE_TRANSIT
+	case "IN_TRANSIT":
+		return proto.ShipmentStatus_IN_TRANSIT
+	case "DELIVERED":
+		return proto.ShipmentStatus_DELIVERED
+	case "PENDING":
+		return proto.ShipmentStatus_PENDING
+	case "CANCELLED":
+		return proto.ShipmentStatus_CANCELLED
+	default:
+		return proto.ShipmentStatus_PENDING
+	}
 }
 
 // GetRates fetches carrier rates from Shippo.

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
 	_ "github.com/lib/pq"
 )
@@ -55,11 +56,13 @@ func (s *PostgresStore) CreateShipment(ctx context.Context, shipment models.Ship
 	// Execute the query with the shipment data and scan the returned ID into shipment.ID
 	// Execute query with shipment data
 	// Why: Saves data and retrieves UUID
+	// Convert proto enum to string for DB storage
+	statusStr := shipment.Status.String()
 	err := s.db.QueryRowContext(ctx, query,
 		shipment.Origin,              // Shipment origin (e.g., "New York")
 		shipment.Destination,         // Shipment destination (e.g., "London")
-		shipment.Status,              // Shipment status (e.g., "In Transit")
-		shipment.ETA,                 // Estimated time of arrival (nullable)
+		statusStr,                    // Shipment status as string
+		shipment.Eta,                 // Estimated time of arrival (nullable)
 		shipment.Carrier.Name,        // Carrier name (e.g., "FedEx")
 		shipment.Carrier.TrackingURL, // Carrier tracking URL (nullable)
 		shipment.TrackingNumber,
@@ -92,10 +95,10 @@ func (s *PostgresStore) GetShipment(ctx context.Context, id string) (models.Ship
 	var shipment models.Shipment
 	// Use sql.Null* for nullable fields
 	// Why: Handles nullable database fields safely
-	var eta, carrierName, trackingURL, trackingNumber, unit sql.NullString
+	var statusStr, eta, carrierName, trackingURL, trackingNumber, unit sql.NullString
 	var length, width, height, weight sql.NullFloat64
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&shipment.ID, &shipment.Origin, &shipment.Destination, &shipment.Status,
+		&shipment.ID, &shipment.Origin, &shipment.Destination, &statusStr,
 		&eta, &carrierName, &trackingURL, &trackingNumber,
 		&length, &width, &height, &weight, &unit,
 	)
@@ -108,7 +111,7 @@ func (s *PostgresStore) GetShipment(ctx context.Context, id string) (models.Ship
 	}
 	// Assign nullable fields
 	// Why: Converts database nulls to Go zero values
-	shipment.ETA = eta.String
+	shipment.Eta = eta.String
 	shipment.Carrier = models.Carrier{Name: carrierName.String, TrackingURL: trackingURL.String}
 	shipment.TrackingNumber = trackingNumber.String
 	shipment.Length = length.Float64
@@ -116,13 +119,15 @@ func (s *PostgresStore) GetShipment(ctx context.Context, id string) (models.Ship
 	shipment.Height = height.Float64
 	shipment.Weight = weight.Float64
 	shipment.Unit = unit.String
+	// parse status string into proto enum
+	shipment.Status = parseStatusStringToProto(statusStr.String)
 	return shipment, nil
 }
 
 // GetShipments retrieves shipments from the database with optional filtering and pagination
 // Filters by origin, status, and destination (empty string means no filter)
 // Uses limit and offset for pagination
-func (s *PostgresStore) GetShipments(ctx context.Context, origin, status, destination string, limit, offset int32) ([]models.Shipment, error) {
+func (s *PostgresStore) GetShipments(ctx context.Context, origin string, status proto.ShipmentStatus, destination string, limit, offset int32) ([]models.Shipment, error) {
 	// Define the SQL query to select shipments with filters and pagination
 	//sql querry with filter and pagination
 	query := `
@@ -136,7 +141,9 @@ func (s *PostgresStore) GetShipments(ctx context.Context, origin, status, destin
         LIMIT $4 OFFSET $5`
 
 	// Execute the query with the provided filters and pagination parameters
-	rows, err := s.db.QueryContext(ctx, query, origin, status, destination, limit, offset)
+	// convert status proto enum to string for DB query
+	statusStr := status.String()
+	rows, err := s.db.QueryContext(ctx, query, origin, statusStr, destination, limit, offset)
 	if err != nil {
 		// Return an error if the query fails
 		return nil, err
@@ -150,20 +157,20 @@ func (s *PostgresStore) GetShipments(ctx context.Context, origin, status, destin
 	// Iterate over the query results
 	for rows.Next() {
 		// Create a new Shipment struct for each row
-		var s models.Shipment
+		var sh models.Shipment
 		// Use sql.NullString for nullable fields (eta, carrier_name, carrier_tracking_url)
-		var eta, carrierName, trackingURL, trackingNumber, unit sql.NullString
+		var statusStr, eta, carrierName, trackingURL, trackingNumber, unit sql.NullString
 		var length, width, height, weight sql.NullFloat64
 
 		// Scan the row data into the Shipment struct and nullable fields
 		if err := rows.Scan(
-			&s.ID,          // Shipment ID (UUID)
-			&s.Origin,      // Shipment origin
-			&s.Destination, // Shipment destination
-			&s.Status,      // Shipment status
-			&eta,           // Nullable ETA
-			&carrierName,   // Nullable carrier name
-			&trackingURL,   // Nullable carrier tracking URL
+			&sh.ID,          // Shipment ID (UUID)
+			&sh.Origin,      // Shipment origin
+			&sh.Destination, // Shipment destination
+			&statusStr,      // Shipment status (string)
+			&eta,            // Nullable ETA
+			&carrierName,    // Nullable carrier name
+			&trackingURL,    // Nullable carrier tracking URL
 			&trackingNumber,
 			&length,
 			&width,
@@ -176,20 +183,21 @@ func (s *PostgresStore) GetShipments(ctx context.Context, origin, status, destin
 		}
 
 		// Assign nullable fields to the Shipment struct, using empty string if null
-		s.ETA = eta.String
-		s.Carrier = models.Carrier{
+		sh.Eta = eta.String
+		sh.Carrier = models.Carrier{
 			Name:        carrierName.String,
 			TrackingURL: trackingURL.String,
 		}
-		s.TrackingNumber = trackingNumber.String
-		s.Length = length.Float64
-		s.Width = weight.Float64
-		s.Height = height.Float64
-		s.Weight = weight.Float64
-		s.Unit = unit.String
+		sh.TrackingNumber = trackingNumber.String
+		sh.Length = length.Float64
+		sh.Width = width.Float64
+		sh.Height = height.Float64
+		sh.Weight = weight.Float64
+		sh.Unit = unit.String
+		sh.Status = parseStatusStringToProto(statusStr.String)
 
 		// Append the shipment to the results slice
-		shipments = append(shipments, s)
+		shipments = append(shipments, sh)
 	}
 
 	// Check for any errors encountered during iteration
@@ -214,8 +222,10 @@ SET origin = $1, destination = $2, status = $3, eta = $4,carrier_name = $5, carr
 WHERE id = $13`
 	//Execute update
 	//Save updated shipment data
+	// convert enum to string for DB
+	statusStr := shipment.Status.String()
 	_, err := s.db.ExecContext(ctx, query,
-		shipment.Origin, shipment.Destination, shipment.Status, shipment.ETA,
+		shipment.Origin, shipment.Destination, statusStr, shipment.Eta,
 		shipment.Carrier.Name, shipment.Carrier.TrackingURL, shipment.TrackingNumber,
 		shipment.Length, shipment.Width, shipment.Height, shipment.Weight, shipment.Unit,
 		shipment.ID,
@@ -225,4 +235,23 @@ WHERE id = $13`
 	}
 	return nil
 
+}
+
+// parseStatusStringToProto converts status string (stored in DB or from Shippo)
+// into the proto.ShipmentStatus enum. Unknown values map to PENDING.
+func parseStatusStringToProto(status string) proto.ShipmentStatus {
+	switch status {
+	case "PRE_TRANSIT":
+		return proto.ShipmentStatus_PRE_TRANSIT
+	case "IN_TRANSIT":
+		return proto.ShipmentStatus_IN_TRANSIT
+	case "DELIVERED":
+		return proto.ShipmentStatus_DELIVERED
+	case "PENDING":
+		return proto.ShipmentStatus_PENDING
+	case "CANCELLED":
+		return proto.ShipmentStatus_CANCELLED
+	default:
+		return proto.ShipmentStatus_PENDING
+	}
 }

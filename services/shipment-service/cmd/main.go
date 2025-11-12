@@ -2,14 +2,13 @@
 package main
 
 import (
-	"database/sql"
 	"log"
 	"net"
 
+	pkgkafka "github.com/Tanmoy095/LogiSynapse/pkg/kafka"
+	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/config"
 	grpcServer "github.com/Tanmoy095/LogiSynapse/shipment-service/handler/grpc"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/kafka"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/service"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/store"
 	"google.golang.org/grpc"
@@ -20,23 +19,6 @@ func main() {
 	// Load configuration from environment variables using the config package
 	// This retrieves database credentials (e.g., DB_USER, DB_PASSWORD, DB_HOST)
 	cfg := config.LoadConfig()
-	// Initialize Kafka producer for publishing shipment.created events.
-	broker := cfg.KAFKA_BROKER
-	topic := cfg.KAFKA_TOPIC
-	if broker == "" || topic == "" {
-		log.Fatal("❌ Missing KAFKA_BROKER or KAFKA_TOPIC")
-	}
-	producer := kafka.NewKafKaProducer(broker, topic)
-
-	// Open a connection to the PostgreSQL database using the connection string from cfg
-	// Note: This connection is redundant since NewPostgresStore also opens a connection
-	db, err := sql.Open("postgres", cfg.GetDBURL())
-	if err != nil {
-		// Log and exit if the database connection fails
-		log.Fatalf("failed to connect to db: %v", err)
-	}
-	// Ensure the database connection is closed when the program exits
-	defer db.Close()
 
 	// Create a new PostgresStore instance to handle database operations
 	// Uses the same connection string to establish a connection
@@ -47,6 +29,13 @@ func main() {
 	}
 	// Ensure the store's database connection is closed when the program exits
 	defer store.Close()
+
+	// Initialize Kafka producer if configuration present
+	var producer pkgkafka.Publisher
+	if cfg.KAFKA_BROKER != "" && cfg.KAFKA_TOPIC != "" {
+		producer = pkgkafka.NewKafkaProducer(cfg.KAFKA_BROKER, cfg.KAFKA_TOPIC)
+		defer producer.Close()
+	}
 
 	// Initialize the ShipmentService, which contains the business logic
 	// It uses the PostgresStore to interact with the database

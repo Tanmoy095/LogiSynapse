@@ -3,8 +3,8 @@ package grpcServer
 import (
 	"context"
 
+	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/service"
 )
 
@@ -77,7 +77,7 @@ func toProtoShipment(s models.Shipment) *proto.Shipment {
 		Id:          s.ID,
 		Origin:      s.Origin,
 		Destination: s.Destination,
-		Eta:         s.ETA,
+		Eta:         s.Eta,
 		Status:      s.Status,
 		Carrier: &proto.Carrier{
 			Name:        s.Carrier.Name,
@@ -94,7 +94,7 @@ func toModelShipment(req *proto.CreateShipmentRequest) models.Shipment {
 		ID:          "",
 		Origin:      req.Origin,
 		Destination: req.Destination,
-		ETA:         req.Eta,
+		Eta:         req.Eta,
 		Status:      req.Status,
 		Carrier: models.Carrier{
 			Name:        req.Carrier.Name,
