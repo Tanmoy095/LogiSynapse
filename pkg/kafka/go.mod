@@ -1,8 +1,8 @@
-module github.com/Tanmoy095/LogiSynapse/status-tracker
+module github.com/Tanmoy095/LogiSynapse/pkg/kafka
 
-go 1.24.4
+go 1.24
 
-require github.com/segmentio/kafka-go v0.4.48
+require github.com/segmentio/kafka-go v0.4.49
 
 require (
 	github.com/klauspost/compress v1.15.9 // indirect

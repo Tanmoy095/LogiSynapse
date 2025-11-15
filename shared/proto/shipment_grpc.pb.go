@@ -4,7 +4,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.29.3
-// source: proto/shipment.proto
+// source: shipment.proto
 
 package proto
 
@@ -157,5 +157,5 @@ var ShipmentService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/shipment.proto",
+	Metadata: "shipment.proto",
 }

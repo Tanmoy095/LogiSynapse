@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/internal/models"
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/proto" // Local proto
+	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -35,7 +35,6 @@ func handleGRPCError(err error, serviceName string) error {
 }
 
 // ShipmentClient connects to the Shipment Service via gRPC.
-// Analogy: The waiter's intercom to talk to the kitchen.
 type ShipmentClient struct {
 	client proto.ShipmentServiceClient
 	conn   *grpc.ClientConn // Store connection for graceful shutdown
@@ -43,13 +42,14 @@ type ShipmentClient struct {
 
 // NewShipmentClient initializes a gRPC client to connect to the Shipment Service.
 // It uses a timeout and blocks until connected to ensure the service is available.
-// Analogy: Sets up the waiter's intercom, ensuring it connects to the kitchen.
 func NewShipmentClient(addr string) (*ShipmentClient, error) {
-	conn, err := grpc.Dial(
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(
+		ctx,
 		addr,
-		grpc.WithInsecure(),             // Use insecure for local development (use TLS in production)
-		grpc.WithBlock(),                // Wait until connected
-		grpc.WithTimeout(5*time.Second), // Timeout if connection fails
+		grpc.WithInsecure(),
+		grpc.WithBlock(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to shipment service: %v", err)
@@ -68,8 +68,7 @@ func (c *ShipmentClient) Close() error {
 
 // GetShipments calls the Shipment Service's GetShipments endpoint.
 // It converts the response to local models for GraphQL.
-// Analogy: Waiter asks the kitchen for a list of dishes (shipments) matching filters.
-func (c *ShipmentClient) GetShipments(ctx context.Context, origin, status, destination string, limit, offset int32) ([]models.Shipment, error) {
+func (c *ShipmentClient) GetShipments(ctx context.Context, origin, destination string, status proto.ShipmentStatus, limit, offset int32) ([]models.Shipment, error) {
 	req := &proto.GetShipmentsRequest{
 		Origin:      origin,
 		Status:      status,
@@ -86,18 +85,6 @@ func (c *ShipmentClient) GetShipments(ctx context.Context, origin, status, desti
 	// Convert proto.Shipment to local models.Shipment..logic same as before...
 	ModelShipments := make([]models.Shipment, len(resp.Shipments))
 	for i, shipment := range resp.Shipments {
-		var ShipmentStatus models.ShipmentStatus
-		switch shipment.Status {
-		case "IN_TRANSIT":
-			ShipmentStatus = models.ShipmentStatusInTransit
-
-		case "DELIVERED":
-			ShipmentStatus = models.ShipmentStatusDelivered
-		case "PENDING":
-			ShipmentStatus = models.ShipmentStatusPending
-		default:
-			return nil, fmt.Errorf("invalid shipment status: %s", shipment.Status)
-		}
 
 		ModelShipments[i] = models.Shipment{
 
@@ -105,7 +92,7 @@ func (c *ShipmentClient) GetShipments(ctx context.Context, origin, status, desti
 			Origin:      shipment.Origin,
 			Destination: shipment.Destination,
 			Eta:         shipment.Eta,
-			Status:      ShipmentStatus,
+			Status:      shipment.Status,
 			Carrier: models.Carrier{
 				Name:        shipment.Carrier.Name,
 				TrackingURL: shipment.Carrier.TrackingUrl,
@@ -119,14 +106,13 @@ func (c *ShipmentClient) GetShipments(ctx context.Context, origin, status, desti
 
 // CreateShipment calls the Shipment Service's CreateShipment endpoint.
 // It converts the input to gRPC format and the response to local models.
-// Analogy: Waiter sends a new dish order to the kitchen and gets the prepared dish.
 func (c *ShipmentClient) CreateShipment(ctx context.Context, shipment models.Shipment) (models.Shipment, error) {
 
 	req := &proto.CreateShipmentRequest{
 		Origin:      shipment.Origin,
 		Destination: shipment.Destination,
 		Eta:         shipment.Eta,
-		Status:      string(shipment.Status), // Convert models.ShipmentStatus to string for gRPC
+		Status:      shipment.Status, // Convert models.ShipmentStatus to string for gRPC
 		Carrier: &proto.Carrier{
 			Name:        shipment.Carrier.Name,
 			TrackingUrl: shipment.Carrier.TrackingURL,
@@ -142,23 +128,13 @@ func (c *ShipmentClient) CreateShipment(ctx context.Context, shipment models.Shi
 		return models.Shipment{}, fmt.Errorf("failed to create shipment: %v", err)
 	}
 	// Convert gRPC status (string) to models.ShipmentStatus
-	var shipmentStatus models.ShipmentStatus
-	switch resp.Shipment.Status {
-	case "IN_TRANSIT":
-		shipmentStatus = models.ShipmentStatusInTransit
-	case "DELIVERED":
-		shipmentStatus = models.ShipmentStatusDelivered
-	case "PENDING":
-		shipmentStatus = models.ShipmentStatusPending
-	default:
-		return models.Shipment{}, fmt.Errorf("invalid shipment status: %s", resp.Shipment.Status)
-	}
+
 	return models.Shipment{
 		ID:          resp.Shipment.Id,
 		Origin:      resp.Shipment.Origin,
 		Destination: resp.Shipment.Destination,
 		Eta:         resp.Shipment.Eta,
-		Status:      shipmentStatus,
+		Status:      resp.Shipment.Status,
 		Carrier: models.Carrier{
 			Name:        resp.Shipment.Carrier.Name,
 			TrackingURL: resp.Shipment.Carrier.TrackingUrl,

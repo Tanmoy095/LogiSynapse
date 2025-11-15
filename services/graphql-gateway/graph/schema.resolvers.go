@@ -9,6 +9,7 @@ import (
 
 	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/generated"
 	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/internal/models"
+	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 
 	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/model" // Generated GraphQL models
 )
@@ -29,14 +30,28 @@ type mutationResolver struct{ *Resolver }
 
 // CreateShipment handles the GraphQL mutation for creating a shipment.
 // It converts the GraphQL input to a local model and calls the gRPC client.
-// Analogy: Waiter sends a new dish order to the kitchen via intercom.
+// but before we need to convert the GraphQL enum value (input.Status) to the proto enum
+// type (proto.ShipmentStatus) before assigning it to  model.
+
+func ToProtoShipmentStatus(s string) proto.ShipmentStatus {
+	switch s {
+	case "IN_TRANSIT":
+		return proto.ShipmentStatus_IN_TRANSIT
+	case "DELIVERED":
+		return proto.ShipmentStatus_DELIVERED
+	case "PENDING":
+		return proto.ShipmentStatus_PENDING
+	default:
+		return proto.ShipmentStatus(0) // or handle error/unknown
+	}
+}
 func (r *mutationResolver) CreateShipment(ctx context.Context, input model.NewShipmentInput) (*model.Shipment, error) {
 	// Convert GraphQL input (model.NewShipmentInput) to local model (models.Shipment)
 	shipment := models.Shipment{
 		Origin:      input.Origin,
 		Destination: input.Destination,
 		Eta:         input.Eta,
-		Status:      models.ShipmentStatus(input.Status), // Convert GraphQL enum to local enum
+		Status:      ToProtoShipmentStatus(string(input.Status)), // Convert GraphQL enum to local enum
 		Carrier: models.Carrier{
 			Name:        input.Carrier.Name,
 			TrackingURL: input.Carrier.TrackingURL,
@@ -44,7 +59,6 @@ func (r *mutationResolver) CreateShipment(ctx context.Context, input model.NewSh
 	}
 
 	// Call the gRPC client to create the shipment
-	// Analogy: Waiter sends the order to the kitchen via intercom
 	created, err := r.shipmentClient.CreateShipment(ctx, shipment)
 	if err != nil {
 		return nil, err // Propagate errors (e.g., service unavailable)
@@ -73,13 +87,15 @@ type queryResolver struct{ *Resolver }
 // Analogy: Waiter takes a customer order (e.g., "shipments from Dhaka") and sends it to the kitchen.
 func (r *queryResolver) Shipments(ctx context.Context, origin *string, status *model.ShipmentStatus, destination *string, limit *int, offset *int) ([]*model.Shipment, error) {
 	// Set default values for optional filters and pagination
-	o, s, d := "", "", ""
+	o := ""
+	d := ""
 	l, o2 := int32(10), int32(0) // Default limit=10, offset=0
+	var s proto.ShipmentStatus = proto.ShipmentStatus(0)
 	if origin != nil {
 		o = *origin
 	}
 	if status != nil {
-		s = string(*status) // Convert GraphQL enum (e.g., IN_TRANSIT) to string for gRPC
+		s = ToProtoShipmentStatus(string(*status)) // Convert GraphQL enum to proto enum
 	}
 	if destination != nil {
 		d = *destination
@@ -93,7 +109,7 @@ func (r *queryResolver) Shipments(ctx context.Context, origin *string, status *m
 
 	// Call gRPC client to fetch shipments with filters and pagination
 	// Analogy: Waiter sends the order (filters and pagination) to the kitchen via intercom
-	shipments, err := r.shipmentClient.GetShipments(ctx, o, s, d, l, o2)
+	shipments, err := r.shipmentClient.GetShipments(ctx, o, d, s, l, o2)
 	if err != nil {
 		return nil, err // Propagate errors (e.g., service unavailable)
 	}
@@ -121,7 +137,7 @@ func (r *queryResolver) Shipments(ctx context.Context, origin *string, status *m
 // Analogy: Waiter confirms the dining room is open and can contact the kitchen.
 func (r *queryResolver) Health(ctx context.Context) (string, error) {
 	// Simple health check: verify gRPC connection is active
-	_, err := r.shipmentClient.GetShipments(ctx, "", "", "", 1, 0)
+	_, err := r.shipmentClient.GetShipments(ctx, "", "", proto.ShipmentStatus(0), 1, 0)
 	if err != nil {
 		return "UNHEALTHY", fmt.Errorf("cannot reach shipment service: %v", err)
 	}

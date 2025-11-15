@@ -1,5 +1,7 @@
 package models
 
+import "github.com/Tanmoy095/LogiSynapse/shared/proto"
+
 // Carrier represents a shipping carrier
 type Carrier struct {
 	Name        string
@@ -8,11 +10,11 @@ type Carrier struct {
 type ShipmentStatus string
 
 // Define enum values to match GraphQL schema
-const (
-	ShipmentStatusInTransit ShipmentStatus = "IN_TRANSIT"
-	ShipmentStatusDelivered ShipmentStatus = "DELIVERED"
-	ShipmentStatusPending   ShipmentStatus = "PENDING"
-)
+// const (
+// 	ShipmentStatusInTransit ShipmentStatus = "IN_TRANSIT"
+// 	ShipmentStatusDelivered ShipmentStatus = "DELIVERED"
+// 	ShipmentStatusPending   ShipmentStatus = "PENDING"
+// )
 
 // Shipment represents a shipment entity
 type Shipment struct {
@@ -20,7 +22,7 @@ type Shipment struct {
 	Origin      string
 	Destination string
 	Eta         string
-	Status      ShipmentStatus
+	Status      proto.ShipmentStatus
 	Carrier     Carrier
 }
 

@@ -12,7 +12,7 @@ service ShipmentService {
 
 message GetShipmentsRequest {
   string origin = 1;
-  string status = 2;
+  ShipmentStatus status = 2;
   string destination = 3;
   int32 limit = 4;
   int32 offset = 5;
@@ -26,7 +26,7 @@ message CreateShipmentRequest {
   string origin = 1;
   string destination = 2;
   string eta = 3;
-  string status = 4;
+  ShipmentStatus status = 4;
   Carrier carrier = 5;
 }
 
@@ -39,10 +39,16 @@ message Shipment {
   string origin = 2;
   string destination = 3;
   string eta = 4;
-  string status = 5;
+  ShipmentStatus status = 5;
   Carrier carrier = 6;
 }
-
+enum ShipmentStatus {
+  IN_TRANSIT = 0;
+  DELIVERED = 1;
+  PENDING = 2;
+  PRE_TRANSIT = 3;
+  CANCELLED = 4;
+}
 message Carrier {
   string name = 1;
   string tracking_url = 2;
