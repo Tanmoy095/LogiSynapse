@@ -4,10 +4,7 @@ go 1.24.4
 
 replace github.com/Tanmoy095/LogiSynapse/shared => ../../shared
 
-replace github.com/Tanmoy095/LogiSynapse/pkg/kafka => ../../pkg/kafka
-
 require (
-	github.com/Tanmoy095/LogiSynapse/pkg/kafka v0.0.0-00010101000000-000000000000
 	github.com/Tanmoy095/LogiSynapse/shared v0.0.0-00010101000000-000000000000
 	github.com/lib/pq v1.10.9
 	google.golang.org/grpc v1.76.0

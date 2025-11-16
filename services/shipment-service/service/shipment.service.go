@@ -11,9 +11,10 @@ import (
 	"strconv"
 	"time"
 
-	pkgkafka "github.com/Tanmoy095/LogiSynapse/pkg/kafka"
+	"github.com/Tanmoy095/LogiSynapse/shared/contracts"
+	pkgkafka "github.com/Tanmoy095/LogiSynapse/shared/kafka"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
+
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/store"
 )
 
@@ -41,14 +42,14 @@ func NewShipmentService(store store.ShipmentStore, producer pkgkafka.Publisher) 
 }
 
 // CreateShipment validates and stores a new shipment.
-func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Shipment) (models.Shipment, error) {
+func (s *ShipmentService) CreateShipment(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
 	// Basic validation
 	if shipment.Origin == "" || shipment.Destination == "" {
-		return models.Shipment{}, errors.New("missing required fields")
+		return contracts.Shipment{}, errors.New("missing required fields")
 	}
 	// validate package dimenssions
 	if shipment.Length <= 0 || shipment.Width <= 0 || shipment.Height <= 0 || shipment.Weight <= 0 || shipment.Unit == "" {
-		return models.Shipment{}, errors.New("Invalid package Dimensions")
+		return contracts.Shipment{}, errors.New("Invalid package Dimensions")
 
 	}
 	shippoReq := map[string]interface{}{
@@ -90,13 +91,13 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Sh
 	//Shipoo Api Requires JSON payload
 	reqBody, err := json.Marshal(shippoReq)
 	if err != nil {
-		return models.Shipment{}, errors.New("failed to marshal Shippo request: " + err.Error())
+		return contracts.Shipment{}, errors.New("failed to marshal Shippo request: " + err.Error())
 	}
 	//Create Post request to shippo's /shipment endpoint
 	//Book the Shipment
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.goshippo.com/shipments", bytes.NewBuffer(reqBody))
 	if err != nil {
-		return models.Shipment{}, errors.New("failed to create Shippo request: " + err.Error())
+		return contracts.Shipment{}, errors.New("failed to create Shippo request: " + err.Error())
 	}
 	req.Header.Set("Authorization", "ShippoToken "+s.shippoKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -104,12 +105,12 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Sh
 	//Gets Tracking Number status and Url
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return models.Shipment{}, errors.New("failed to call Shippo API: " + err.Error())
+		return contracts.Shipment{}, errors.New("failed to call Shippo API: " + err.Error())
 
 	}
 	//Ensure and check Shipment creation Succeeded
 	if resp.StatusCode != http.StatusCreated {
-		return models.Shipment{}, errors.New("Shippo API error: status " + resp.Status)
+		return contracts.Shipment{}, errors.New("Shippo API error: status " + resp.Status)
 
 	}
 	//Parse Shippo Response
@@ -123,7 +124,7 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Sh
 		Carrier        string `json:"carrier"`               // e.g., "fedex"
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&shippoResp); err != nil {
-		return models.Shipment{}, errors.New("failed to parse Shippo response: " + err.Error())
+		return contracts.Shipment{}, errors.New("failed to parse Shippo response: " + err.Error())
 	}
 
 	//Update response with shippo data
@@ -132,7 +133,7 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Sh
 	shipment.TrackingNumber = shippoResp.TrackingNumber
 	// Map Shippo status string to proto enum
 	shipment.Status = mapShippoStatusToProto(shippoResp.Status)
-	shipment.Carrier = models.Carrier{
+	shipment.Carrier = contracts.Carrier{
 		Name:        shipment.Carrier.Name,
 		TrackingURL: shipment.Carrier.TrackingURL,
 	}
@@ -175,40 +176,40 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment models.Sh
 
 // Update shipment
 // Update shipment update shipment details for --> pre transit shipments
-func (s *ShipmentService) Updateshipment(ctx context.Context, shipment models.Shipment) (models.Shipment, error) {
+func (s *ShipmentService) Updateshipment(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
 	//validate shipment id and fields
 	//ensure valid update request
 	if shipment.ID == "" {
-		return models.Shipment{}, errors.New("missing shipment id")
+		return contracts.Shipment{}, errors.New("missing shipment id")
 
 	}
 	if shipment.Origin == "" && shipment.Destination == "" && shipment.Eta == "" && shipment.Length == 0 {
 
-		return models.Shipment{}, errors.New("no fields to update")
+		return contracts.Shipment{}, errors.New("no fields to update")
 
 	}
 	//Get existing shipment
 	current, err := s.store.GetShipment(ctx, shipment.ID)
 	if err != nil {
-		return models.Shipment{}, errors.New("no failed to get shipments: " + err.Error())
+		return contracts.Shipment{}, errors.New("no failed to get shipments: " + err.Error())
 
 	}
 
 	//Prevents update if not pre_transit
 
 	if current.Status != proto.ShipmentStatus_PRE_TRANSIT {
-		return models.Shipment{}, errors.New("can only update pre_Transit shipment")
+		return contracts.Shipment{}, errors.New("can only update pre_Transit shipment")
 
 	}
 	//Marge updated fields
 	//preserves existing data for unchanged fields
-	updatedShipment := models.Shipment{
+	updatedShipment := contracts.Shipment{
 		ID:             shipment.ID,
 		Origin:         ifEmpty(shipment.Origin, current.Origin),
 		Destination:    ifEmpty(shipment.Destination, current.Destination),
 		Eta:            ifEmpty(shipment.Eta, current.Eta),
 		Status:         current.Status,
-		Carrier:        models.Carrier{Name: ifEmpty(shipment.Carrier.Name, current.Carrier.Name), TrackingURL: current.Carrier.TrackingURL},
+		Carrier:        contracts.Carrier{Name: ifEmpty(shipment.Carrier.Name, current.Carrier.Name), TrackingURL: current.Carrier.TrackingURL},
 		TrackingNumber: current.TrackingNumber,
 		Length:         ifZero(shipment.Length, current.Length),
 		Width:          ifZero(shipment.Width, current.Width),
@@ -218,7 +219,7 @@ func (s *ShipmentService) Updateshipment(ctx context.Context, shipment models.Sh
 	}
 	//Update in postgres
 	if err := s.store.UpdateShipment(ctx, updatedShipment); err != nil {
-		return models.Shipment{}, err
+		return contracts.Shipment{}, err
 	}
 	//Publish shipment.updated event
 	//Notify status tacker of change
@@ -292,7 +293,7 @@ func (s *ShipmentService) DeleteShipment(ctx context.Context, id string) error {
 // Why: Enables clients to compare shipping options, like Amazon’s checkout.
 // Note: Doesn’t use store since it’s an API call.
 
-func (s *ShipmentService) GetShipments(origin string, status proto.ShipmentStatus, destination string, limit, offset int32) ([]models.Shipment, error) {
+func (s *ShipmentService) GetShipments(origin string, status proto.ShipmentStatus, destination string, limit, offset int32) ([]contracts.Shipment, error) {
 	return s.store.GetShipments(context.Background(), origin, status, destination, limit, offset)
 }
 
@@ -317,7 +318,7 @@ func mapShippoStatusToProto(s string) proto.ShipmentStatus {
 // GetRates fetches carrier rates from Shippo.
 // Why: Enables clients to compare shipping options, like Amazon’s checkout.
 // Note: Doesn’t use store since it’s an API call.
-func (s *ShipmentService) GetRates(ctx context.Context, origin, destination string, length, width, height, weight float64, unit string) ([]models.Rate, error) {
+func (s *ShipmentService) GetRates(ctx context.Context, origin, destination string, length, width, height, weight float64, unit string) ([]contracts.Rate, error) {
 	// Validate input
 	// Why: Ensures Shippo gets valid data
 	if origin == "" || destination == "" || length <= 0 || width <= 0 || height <= 0 || weight <= 0 || unit == "" {
@@ -386,10 +387,10 @@ func (s *ShipmentService) GetRates(ctx context.Context, origin, destination stri
 	}
 	// Convert to internal Rate model
 	// Why: Prepares rates for gRPC response
-	rates := make([]models.Rate, len(rateResp.Rates))
+	rates := make([]contracts.Rate, len(rateResp.Rates))
 	for i, r := range rateResp.Rates {
 		amount, _ := strconv.ParseFloat(r.Amount, 64)
-		rates[i] = models.Rate{
+		rates[i] = contracts.Rate{
 			Carrier:       r.Carrier,
 			Service:       r.Service,
 			Amount:        amount,

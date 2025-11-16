@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 
-	pkgkafka "github.com/Tanmoy095/LogiSynapse/pkg/kafka"
+	pkgkafka "github.com/Tanmoy095/LogiSynapse/shared/kafka"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/config"
 	grpcServer "github.com/Tanmoy095/LogiSynapse/shipment-service/handler/grpc"

@@ -3,8 +3,8 @@ package grpcServer
 import (
 	"context"
 
+	models "github.com/Tanmoy095/LogiSynapse/shared/contracts"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
 	"github.com/Tanmoy095/LogiSynapse/shipment-service/service"
 )
 

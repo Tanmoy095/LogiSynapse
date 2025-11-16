@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/Tanmoy095/LogiSynapse/shared/contracts"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/internal/models"
 	_ "github.com/lib/pq"
 )
 
@@ -44,7 +44,7 @@ func (s *PostgresStore) Close() error {
 // Takes a context for cancellation/timeout and a Shipment struct with data
 // CreateShipment inserts a new shipment into the database.
 // Why: Persists shipment data, including dynamic dimensions, for real-world accuracy.
-func (s *PostgresStore) CreateShipment(ctx context.Context, shipment models.Shipment) (models.Shipment, error) {
+func (s *PostgresStore) CreateShipment(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
 	// Define the SQL query to insert a shipment and return the generated ID
 	// SQL query to insert shipment and return generated ID
 	// Why: Stores all fields, including package details and tracking
@@ -76,7 +76,7 @@ func (s *PostgresStore) CreateShipment(ctx context.Context, shipment models.Ship
 	// Check for errors during the query execution
 	if err != nil {
 		// Return an empty Shipment and an error if the insert fails
-		return models.Shipment{}, fmt.Errorf("failed to insert shipment: %v", err)
+		return contracts.Shipment{}, fmt.Errorf("failed to insert shipment: %v", err)
 	}
 
 	// Return the shipment with the newly assigned ID
@@ -85,14 +85,14 @@ func (s *PostgresStore) CreateShipment(ctx context.Context, shipment models.Ship
 
 // GetShipment retrieves a shipment by ID.
 // Why: Needed for UpdateShipment and DeleteShipment to check status and preserve data.
-func (s *PostgresStore) GetShipment(ctx context.Context, id string) (models.Shipment, error) {
+func (s *PostgresStore) GetShipment(ctx context.Context, id string) (contracts.Shipment, error) {
 	// SQL query to fetch shipment with all fields
 	// Why: Retrieves complete data, including dimensions
 	query := `
 		SELECT id, origin, destination, status, eta, carrier_name, carrier_tracking_url, tracking_number,
    		length, width, height, weight, unit
 		FROM shipments WHERE id = $1`
-	var shipment models.Shipment
+	var shipment contracts.Shipment
 	// Use sql.Null* for nullable fields
 	// Why: Handles nullable database fields safely
 	var statusStr, eta, carrierName, trackingURL, trackingNumber, unit sql.NullString
@@ -104,15 +104,15 @@ func (s *PostgresStore) GetShipment(ctx context.Context, id string) (models.Ship
 	)
 	// Handle not found error
 	if err == sql.ErrNoRows {
-		return models.Shipment{}, fmt.Errorf("shipment not found")
+		return contracts.Shipment{}, fmt.Errorf("shipment not found")
 	}
 	if err != nil {
-		return models.Shipment{}, err
+		return contracts.Shipment{}, err
 	}
 	// Assign nullable fields
 	// Why: Converts database nulls to Go zero values
 	shipment.Eta = eta.String
-	shipment.Carrier = models.Carrier{Name: carrierName.String, TrackingURL: trackingURL.String}
+	shipment.Carrier = contracts.Carrier{Name: carrierName.String, TrackingURL: trackingURL.String}
 	shipment.TrackingNumber = trackingNumber.String
 	shipment.Length = length.Float64
 	shipment.Width = width.Float64
@@ -127,7 +127,7 @@ func (s *PostgresStore) GetShipment(ctx context.Context, id string) (models.Ship
 // GetShipments retrieves shipments from the database with optional filtering and pagination
 // Filters by origin, status, and destination (empty string means no filter)
 // Uses limit and offset for pagination
-func (s *PostgresStore) GetShipments(ctx context.Context, origin string, status proto.ShipmentStatus, destination string, limit, offset int32) ([]models.Shipment, error) {
+func (s *PostgresStore) GetShipments(ctx context.Context, origin string, status proto.ShipmentStatus, destination string, limit, offset int32) ([]contracts.Shipment, error) {
 	// Define the SQL query to select shipments with filters and pagination
 	//sql querry with filter and pagination
 	query := `
@@ -152,12 +152,12 @@ func (s *PostgresStore) GetShipments(ctx context.Context, origin string, status 
 	defer rows.Close()
 
 	// Initialize a slice to store the retrieved shipments
-	var shipments []models.Shipment
+	var shipments []contracts.Shipment
 
 	// Iterate over the query results
 	for rows.Next() {
 		// Create a new Shipment struct for each row
-		var sh models.Shipment
+		var sh contracts.Shipment
 		// Use sql.NullString for nullable fields (eta, carrier_name, carrier_tracking_url)
 		var statusStr, eta, carrierName, trackingURL, trackingNumber, unit sql.NullString
 		var length, width, height, weight sql.NullFloat64
@@ -184,7 +184,7 @@ func (s *PostgresStore) GetShipments(ctx context.Context, origin string, status 
 
 		// Assign nullable fields to the Shipment struct, using empty string if null
 		sh.Eta = eta.String
-		sh.Carrier = models.Carrier{
+		sh.Carrier = contracts.Carrier{
 			Name:        carrierName.String,
 			TrackingURL: trackingURL.String,
 		}
@@ -214,7 +214,7 @@ func (s *PostgresStore) GetShipments(ctx context.Context, origin string, status 
 
 // Sql query to Update all fields
 // Persists changes including status for deleteShipment
-func (s *PostgresStore) UpdateShipment(ctx context.Context, shipment models.Shipment) error {
+func (s *PostgresStore) UpdateShipment(ctx context.Context, shipment contracts.Shipment) error {
 	//sql query to update all fields
 	query := `
 UPDATE shipments

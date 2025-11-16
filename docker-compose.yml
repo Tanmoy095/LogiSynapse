@@ -24,8 +24,8 @@ services:
 
   shipment-service:
     build:
-      context: ./services/shipment-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/shipment-service/Dockerfile
     container_name: shipment-service
     depends_on:
       postgres:
@@ -42,8 +42,8 @@ services:
 
   graphql-gateway:
     build:
-      context: ./services/graphql-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/graphql-gateway/Dockerfile
     container_name: graphql-gateway
     env_file:
       - .env
@@ -56,9 +56,73 @@ services:
     depends_on:
       - shipment-service
 
+  # ---------------------------------------------------
+  # NEW: Temporal Services
+  # ---------------------------------------------------
+
+  # 1. Temporal's own database
+  temporal-db:
+    image: postgres:15 # <--- We can use the same Postgres version
+    container_name: temporal-db
+    environment:
+      POSTGRES_PASSWORD: temporal # <--- Simple password for local dev
+      POSTGRES_USER: temporal
+      POSTGRES_DB: temporal
+    ports:
+      - "5433:5432" # <--- Mapped to host 5433 to avoid conflict with your app's 5432
+    networks:
+      - loginet
+    volumes:
+      - temporal_db_data:/var/lib/postgresql/data # <--- New volume
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. The Temporal Server
+  temporal:
+    container_name: temporal
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+    image: temporalio/auto-setup:${TEMPORAL_VERSION}
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-db # <--- It will use this to auto-configure
+      - ENABLE_ES=false
+    # ... other lines ...
+    ports:
+      - "7233:7233" # <--- gRPC port for workers
+    networks:
+      - loginet
+
+  # 3. The Temporal Web UI
+  temporal-ui:
+    container_name: temporal-ui
+    depends_on:
+      - temporal
+    image: temporalio/ui:${TEMPORAL_UI_VERSION} # <--- Uses .env variable
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233 # <--- Connects to the service name 'temporal'
+    ports:
+      - "8088:8080" # <--- CRITICAL: Changed to host 8088 to avoid conflict with your gateway
+    networks:
+      - loginet
+
+# ---------------------------------------------------
+# NEW: Top-level volumes
+# ---------------------------------------------------
 volumes:
   postgres_data:
+  temporal_db_data: # <--- Added new volume for temporal-db
 
+# ---------------------------------------------------
+# Your existing network
+# ---------------------------------------------------
 networks:
   loginet:
     driver: bridge

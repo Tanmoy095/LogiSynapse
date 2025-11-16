@@ -9,7 +9,6 @@ import (
 )
 
 // Writer defines the subset of segmentio kafka.Writer we need. This makes the producer testable.
-// Writer defines the subset of segmentio kafka.Writer we need. This makes the producer testable.
 type Writer interface {
 	WriteMessages(ctx context.Context, msgs ...skafka.Message) error
 	Close() error
