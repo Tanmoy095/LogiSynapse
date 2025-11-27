@@ -15,7 +15,7 @@ import (
 	pkgkafka "github.com/Tanmoy095/LogiSynapse/shared/kafka"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/store"
+	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/store"
 )
 
 // ShipmentService handles business logic for shipments, using a ShipmentStore for data access.

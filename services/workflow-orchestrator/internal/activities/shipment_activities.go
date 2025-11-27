@@ -29,7 +29,7 @@ type ShipmentActivities struct {
 }
 
 // Activity 1: The External API Call
-func (a *ShipmentActivities) Activity_CallShippoAPI(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
+func (a *ShipmentActivities) ACTIVITY_CallShippoAPI(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
 	// Basic validation
 	if shipment.Origin == "" || shipment.Destination == "" {
 		return contracts.Shipment{}, errors.New("missing required fields")
@@ -95,6 +95,7 @@ func (a *ShipmentActivities) Activity_CallShippoAPI(ctx context.Context, shipmen
 		return contracts.Shipment{}, errors.New("failed to call Shippo API: " + err.Error())
 
 	}
+	defer resp.Body.Close()
 	//Ensure and check Shipment creation Succeeded
 	if resp.StatusCode != http.StatusCreated {
 		return contracts.Shipment{}, errors.New("Shippo API error: status " + resp.Status)
@@ -156,13 +157,13 @@ func mapShippoStatusToProto(s string) proto.ShipmentStatus {
 }
 
 // Activity 2: The DB Operation
-func (a *ShipmentActivities) Activity_SaveShipmentToDB(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
+func (a *ShipmentActivities) ACTIVITY_SaveShipmentToDB(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
 	// Simple wrapper around your existing store logic
 	return a.Store.CreateShipment(ctx, shipment)
 }
 
 // Activity 3: The Event
-func (a *ShipmentActivities) Activity_PublishKafkaEvent(ctx context.Context, shipment contracts.Shipment) error {
+func (a *ShipmentActivities) ACTIVITY_PublishKafkaEvent(ctx context.Context, shipment contracts.Shipment) error {
 	event := map[string]interface{}{
 		"event":   "shipment.created",
 		"payload": shipment,

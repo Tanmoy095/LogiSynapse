@@ -7,11 +7,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/generated"
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/internal/models"
+	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/graph/generated"
+	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/internal/models"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/model" // Generated GraphQL models
+	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/graph/model" // Generated GraphQL models
 )
 
 // Mutation returns the MutationResolver implementation.

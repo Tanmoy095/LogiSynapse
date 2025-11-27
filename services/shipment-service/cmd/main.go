@@ -1,16 +1,16 @@
-// cmd/main.go
+// cmd/main.go in shipment-service
 package main
 
 import (
 	"log"
 	"net"
 
+	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/config"
+	grpcServer "github.com/Tanmoy095/LogiSynapse/services/shipment-service/handler/grpc"
+	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/service"
+	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/store"
 	pkgkafka "github.com/Tanmoy095/LogiSynapse/shared/kafka"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/config"
-	grpcServer "github.com/Tanmoy095/LogiSynapse/shipment-service/handler/grpc"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/service"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/store"
 	"google.golang.org/grpc"
 )
 

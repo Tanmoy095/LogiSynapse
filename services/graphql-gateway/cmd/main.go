@@ -8,9 +8,9 @@ import (
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/client"          // gRPC client
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph"           // GraphQL resolvers
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/graph/generated" // Generated GraphQL schema
+	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/client"          // gRPC client
+	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/graph"           // GraphQL resolvers
+	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/graph/generated" // Generated GraphQL schema
 )
 
 // main starts the GraphQL server and connects to the Shipment Service.

@@ -23,7 +23,7 @@ func CreateShimentWorkflow(ctx workflow.Context, shipment contracts.Shipment) (c
 	}
 
 	options := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Second * 10, // Each step shouldn't take > 10s
+		StartToCloseTimeout: time.Second * 45, // Each step shouldn't take > 45s
 		RetryPolicy:         retrypolicy,
 	}
 
@@ -52,7 +52,7 @@ func CreateShimentWorkflow(ctx workflow.Context, shipment contracts.Shipment) (c
 	//Step 3: Publish Event (Activity)
 	// Fire and forget (but Temporal ensures it fires).
 
-	err = workflow.ExecuteActivity(ctx, "Activity_PublishKafkaEvent", storedShipment).Get(ctx, nil)
+	err = workflow.ExecuteActivity(ctx, "ACTIVITY_PublishKafkaEvent", storedShipment).Get(ctx, nil)
 	if err != nil {
 		return contracts.Shipment{}, err
 

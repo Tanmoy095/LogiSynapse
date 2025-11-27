@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/internal/models"
+	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/internal/models"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

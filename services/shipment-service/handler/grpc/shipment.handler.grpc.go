@@ -3,9 +3,9 @@ package grpcServer
 import (
 	"context"
 
+	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/service"
 	models "github.com/Tanmoy095/LogiSynapse/shared/contracts"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
-	"github.com/Tanmoy095/LogiSynapse/shipment-service/service"
 )
 
 /* gRPC server struct that implements the ShipmentService interface.....

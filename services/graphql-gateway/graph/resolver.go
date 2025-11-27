@@ -4,7 +4,7 @@ package graph
 // graph/resolver.go
 
 import (
-	"github.com/Tanmoy095/LogiSynapse/graphql-gateway/client" // gRPC client
+	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/client" // gRPC client
 )
 
 // Resolver holds dependencies for GraphQL resolvers.
