@@ -3,15 +3,15 @@ module github.com/Tanmoy095/LogiSynapse/services/workflow-orchestrator
 go 1.24.4
 
 replace github.com/Tanmoy095/LogiSynapse/shared => ../../shared
+
 replace github.com/Tanmoy095/LogiSynapse/services/shipment-service => ../shipment-service
 
+require go.temporal.io/sdk v1.38.0
 
-
-require (
-	go.temporal.io/sdk v1.38.0
-)
+require github.com/lib/pq v1.10.9 // indirect
 
 require (
+	github.com/Tanmoy095/LogiSynapse/services/shipment-service v0.0.0-20251126141832-b622e1cd448d
 	github.com/Tanmoy095/LogiSynapse/shared v0.0.0-20251126141832-b622e1cd448d
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
@@ -29,14 +29,14 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	go.temporal.io/api v1.54.0 // indirect
-	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.34.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/net v0.46.1-0.20251013234738-63d1a5100f82 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250804133106-a7a43d27e69b // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
-	google.golang.org/grpc v1.76.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20251022142026-3a174f9686a8 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
+	google.golang.org/grpc v1.77.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

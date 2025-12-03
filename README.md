@@ -1,203 +1,722 @@
-# LogiSynapse — Shipment Service: design, fixes, and developer guide
+# LogiSynapse — Microservices-Based Shipment Management Platform
 
-This repository contains multiple services. This README documents what I changed to address status-type issues where `status` was moved from strings to a proto enum and explains how the Shipment Service works in detail: files, folders, runtime flow, and how you can build/run/test locally.
+LogiSynapse is a modern, scalable shipment management platform built with **Go**, **gRPC**, **GraphQL**, **Temporal.io**, and **PostgreSQL**. It orchestrates complex logistics workflows including shipment creation, tracking, label generation, and carrier rate comparison through integration with **Shippo's API**. The architecture follows microservices patterns with event-driven communication via Kafka, inspired by enterprise systems like Amazon and FedEx.
 
-## Summary of fixes applied
+## 🏗️ Architecture Overview
 
-- Added new enum values to the protobuf: `PRE_TRANSIT` and `CANCELLED` so the internal code can use explicit states instead of raw strings.
-  - File: `shared/proto/shipment.proto` (added PRE_TRANSIT and CANCELLED)
-- Updated generated proto Go to include the new enum values.
-  - File: `shared/proto/shipment.pb.go` (added constants and name/value maps)
-- Aligned internal model to the proto enum:
-  - `services/shipment-service/internal/models/shipment.models.go`
-    - `Shipment.Status` is now `proto.ShipmentStatus` (aliased) and additional fields (tracking, dimensions) were added so service/store code compiles.
-- Updated service code to use enums and mapping helpers:
-  - `services/shipment-service/service/shipment.service.go`
-    - Introduced `mapShippoStatusToProto` to convert Shippo status strings into `proto.ShipmentStatus`.
-    - Replaced string comparisons like `== "PRE_TRANSIT"` with `proto.ShipmentStatus_PRE_TRANSIT`.
-    - Fixed field name mismatches (Eta vs ETA) and guarded Kafka producer calls.
+LogiSynapse consists of three core services working together:
 
-Notes: The Postgres store still persists `status` as TEXT. The store currently passes `shipment.Status` (a proto enum value) directly into SQL; to fully ensure database compatibility you may want to explicitly convert between enum and string when inserting/updating/reading. See 'Open items / next steps' below.
+### 1. **Shipment Service** (gRPC API)
 
-## High-level architecture (shipment-service)
+The core domain service handling all shipment operations via gRPC:
 
-The shipment service is built in Go and organized into logical layers:
+- **CRUD Operations**: Create, Read, Update, Delete shipments
+- **External Integration**: Shippo API for label generation and tracking
+- **Data Persistence**: PostgreSQL with automated migrations
+- **Event Publishing**: Kafka events for shipment lifecycle changes
+- **Status Management**: Proto-based enum system for shipment states
 
-- Handler (gRPC) — receives requests from the outside world and converts to internal models
-- Service (business logic) — orchestration, validation, external API calls (Shippo), kafka events
-- Store (persistence) — database interactions (Postgres)
-- Internal models — canonical Go structs used across service and handler
-- Shared proto — gRPC service + message definitions used by gateway and clients
+### 2. **Workflow Orchestrator** (Temporal Worker)
 
-Data flow for a CreateShipment request:
+Orchestrates multi-step shipment workflows using **Temporal.io**:
 
-1. Client (GraphQL gateway or direct gRPC) sends CreateShipment request (proto). The GraphQL gateway calls gRPC client.
-2. gRPC handler (`handler/grpc/shipment.handler.grpc.go`) converts proto request to `models.Shipment` and calls the `ShipmentService`.
-3. `service.ShipmentService.CreateShipment` validates request, builds Shippo API request with parcel dimensions, sends HTTP request to Shippo, receives the label/tracking response.
-4. The service maps Shippo status string to `proto.ShipmentStatus` (via `mapShippoStatusToProto`) and fills internal `models.Shipment` fields (ID, TrackingNumber, Carrier, Status, dimensions, unit).
-5. The service calls the `store` (Postgres) to persist the shipment.
-6. The service publishes an event to Kafka (if producer present) such as `shipment.created` with the created shipment as payload.
-7. The handler converts the internal model back to proto and returns it to the caller.
+- **Reliable Execution**: Durable workflows with automatic retries and exponential backoff
+- **Activity Decomposition**:
+  - `ACTIVITY_CallShippoAPI` — External API calls to Shippo
+  - `ACTIVITY_SaveShipmentToDB` — Database persistence
+  - `ACTIVITY_PublishKafkaEvent` — Event publication
+- **Saga Pattern**: Handles distributed transactions and compensations
+- **Fault Tolerance**: Survives service restarts and network failures
 
-For updates and deletes, the service ensures only `PRE_TRANSIT` shipments can be updated/cancelled. When cancelling a shipment the service will call Shippo to void it then set the DB status to `CANCELLED`.
+### 3. **GraphQL Gateway** (Client-Facing API)
 
-## Folder / file map (what each file is for)
+User-facing API layer exposing shipment operations via GraphQL:
 
-- `services/shipment-service/`
+- **Schema-First Design**: Type-safe GraphQL schema
+- **gRPC Client**: Communicates with Shipment Service
+- **Query & Mutations**: Read and write operations for shipments
+- **API Aggregation**: Single entry point for frontend applications
 
-  - `cmd/main.go` — application entrypoint. Loads config, creates DB store, instantiates the service and starts the gRPC server.
-  - `config/` — configuration helpers (env parsing). e.g. `config/config.go` loads DB connection string and other env vars.
-  - `handler/grpc/shipment.handler.grpc.go` — gRPC server implementation. Converts between proto and internal models and delegates to `service`.
-  - `service/shipment.service.go` — business logic. Validates inputs, calls Shippo APIs, persists via store, and publishes Kafka events.
-  - `store/postgres.go` — Postgres implementation of `store.ShipmentStore`. Contains Create, Get, GetShipments, Update logic.
-  - `internal/models/` — internal Go models used by service and handlers (e.g. `shipment.models.go`, `rate.models.go`). Keeps the domain model independent from generated proto structs.
-  - `internal/kafka/producer.go` — (if present) Kafka producer wrapper used by service to publish events.
-  - `db/migrations/` — SQL migrations for the shipments table. Example: `00002_create_shipments_table.sql` creates `shipments` table.
+### Supporting Infrastructure
 
-- `shared/proto/` — protobuf definitions and generated Go files (e.g. `shipment.proto`, `shipment.pb.go`, `shipment_grpc.pb.go`). The proto defines the gRPC service contract shared across services.
+- **Shared Module**: Common contracts, proto definitions, Kafka producers, and config
+- **Temporal Server**: Workflow engine with Web UI (port 8088)
+- **PostgreSQL**: Two databases (app data + Temporal state)
+- **Docker Compose**: Full-stack orchestration
 
-- `services/graphql-gateway/` — GraphQL gateway which calls the gRPC shipment service as a client. Not strictly part of the shipment-service, but consumes the proto contract.
+## 📊 Current Implementation Status
 
-## Important files to review for status/enum handling
+### ✅ Completed Features
 
-- `shared/proto/shipment.proto` — canonical enum definitions. Make sure any changes here are recompiled with `protoc` and the generated files are kept in sync.
-- `internal/models/shipment.models.go` — local representation. We aliased `ShipmentStatus` to `proto.ShipmentStatus` so most of the code uses the generated enum.
-- `store/postgres.go` — currently stores `status` in a `TEXT` column. Because `Shipment.Status` is now an enum type (`int32` under the hood), you should convert between enum <-> string when reading/writing to keep DB readable and stable. Example mapping funcs are described below.
+#### Core Shipment Operations
 
-## Database mapping recommendation (enum <-> db text)
+- ✅ Create shipments with dynamic package dimensions (length, width, height, weight)
+- ✅ Update shipment details (destination, ETA) for `PRE_TRANSIT` status
+- ✅ Cancel shipments with Shippo API integration for label voiding
+- ✅ Get single shipment by ID
+- ✅ List all shipments with pagination support
+- ✅ Carrier rate comparison (FedEx, UPS, DHL)
+- ✅ Shipping label generation via Shippo
 
-Because the DB has `status TEXT`, I recommend explicit mapping to/from the textual representation.
+#### Temporal Workflow Integration
 
-Example helper (suggested):
+- ✅ `CreateShipmentWorkflow` with 3-step orchestration
+- ✅ Retry policies with exponential backoff (up to 10 minutes)
+- ✅ Activity timeout configuration (45 seconds per step)
+- ✅ Dependency injection for Store and Kafka Producer
+- ✅ Worker registration with proper activity/workflow setup
+
+#### Data & Schema Management
+
+- ✅ Centralized proto definitions in `shared/proto/`
+- ✅ Unified `ShipmentStatus` enum (PENDING, PRE_TRANSIT, IN_TRANSIT, DELIVERED, CANCELLED)
+- ✅ Shared contracts in `shared/contracts/` for cross-service models
+- ✅ Database migrations with `pgcrypto` extension
+- ✅ Shipments table with tracking, carrier, dimensions fields
+
+#### Infrastructure & DevOps
+
+- ✅ Multi-service Docker Compose setup
+- ✅ Temporal Server with dedicated PostgreSQL database
+- ✅ Temporal Web UI (accessible at `http://localhost:8088`)
+- ✅ Health checks for all services
+- ✅ Shared network (`loginet`) for inter-service communication
+- ✅ Environment-based configuration via `.env`
+
+#### Code Quality & Organization
+
+- ✅ Monorepo structure with Go workspaces
+- ✅ Local `replace` directives for inter-module dependencies
+- ✅ Centralized config loading (`shared/config/config.go`)
+- ✅ Kafka producer abstraction (`shared/kafka/producer.go`)
+- ✅ Proto-based gRPC contracts with generated code
+
+### 🚧 In Progress / Planned Features
+
+#### Webhook Integration
+
+- 🔄 Shippo webhook receiver for real-time tracking updates
+- 🔄 Automatic status synchronization on carrier events
+
+#### Enhanced Workflows
+
+- 🔄 UpdateShipment workflow via Temporal
+- 🔄 CancelShipment workflow with compensation logic
+- 🔄 Rate comparison workflow with caching
+
+#### Observability
+
+- 🔄 Structured logging (zerolog/zap)
+- 🔄 Distributed tracing (OpenTelemetry)
+- 🔄 Metrics collection (Prometheus)
+- 🔄 Temporal workflow monitoring dashboards
+
+#### Testing
+
+- 🔄 Unit tests for activities and workflows
+- 🔄 Integration tests with Temporal test server
+- 🔄 Mock Shippo API for local testing
+- 🔄 End-to-end GraphQL query tests
+
+## 🗂️ Project Structure
+
+```
+LogiSynapse/
+├── services/
+│   ├── shipment-service/          # Core gRPC service
+│   │   ├── cmd/main.go            # Service entrypoint
+│   │   ├── handler/grpc/          # gRPC handlers
+│   │   ├── service/               # Business logic
+│   │   ├── store/                 # Database layer (Postgres)
+│   │   ├── db/migrations/         # SQL migrations
+│   │   └── Dockerfile
+│   │
+│   ├── workflow-orchestrator/     # Temporal worker
+│   │   ├── cmd/main.go            # Worker entrypoint
+│   │   ├── internal/
+│   │   │   ├── activities/        # Temporal activities
+│   │   │   └── workflow/          # Workflow definitions
+│   │   └── go.mod
+│   │
+│   └── graphql-gateway/           # GraphQL API
+│       ├── cmd/main.go            # Gateway entrypoint
+│       ├── graph/                 # GraphQL resolvers & schema
+│       ├── client/                # gRPC client
+│       └── Dockerfile
+│
+├── shared/                        # Shared modules
+│   ├── proto/                     # Protobuf definitions
+│   │   ├── shipment.proto         # Service contract
+│   │   ├── shipment.pb.go         # Generated Go code
+│   │   └── shipment_grpc.pb.go    # gRPC stubs
+│   ├── contracts/                 # Domain models
+│   │   └── shipment.model.go      # Shared Shipment struct
+│   ├── config/                    # Configuration utilities
+│   │   └── config.go              # CommonConfig loader
+│   ├── kafka/                     # Kafka abstractions
+│   │   └── producer.go            # Publisher interface
+│   └── go.mod
+│
+├── docker-compose.yml             # Full-stack orchestration
+├── .env                           # Environment variables
+└── README.md                      # This file
+```
+
+## 🔄 Data Flow: Creating a Shipment
+
+### Option 1: Via Temporal Workflow (Recommended)
+
+```
+[GraphQL Client]
+      │
+      ├─→ [GraphQL Gateway]
+      │         │
+      │         ├─→ Starts Temporal Workflow
+      │         │         │
+      │         │         ├─→ [Workflow Orchestrator]
+      │         │         │         │
+      │         │         │         ├─→ ACTIVITY: Call Shippo API
+      │         │         │         │         └─→ Returns tracking number
+      │         │         │         │
+      │         │         │         ├─→ ACTIVITY: Save to Postgres
+      │         │         │         │         └─→ Stores shipment
+      │         │         │         │
+      │         │         │         └─→ ACTIVITY: Publish Kafka Event
+      │         │         │                   └─→ shipment.created
+      │         │         │
+      │         │         └─→ Returns result
+      │         │
+      │         └─→ Returns to client
+```
+
+### Option 2: Direct gRPC (Legacy Path)
+
+```
+[GraphQL Client]
+      │
+      └─→ [GraphQL Gateway]
+               │
+               └─→ [Shipment Service] (gRPC)
+                        │
+                        ├─→ Validates request
+                        ├─→ Calls Shippo API (HTTP)
+                        ├─→ Saves to Postgres
+                        ├─→ Publishes Kafka event
+                        └─→ Returns proto response
+```
+
+## 🛠️ Technology Stack
+
+| Layer                | Technology                 | Purpose                     |
+| -------------------- | -------------------------- | --------------------------- |
+| **API Gateway**      | GraphQL (gqlgen)           | Client-facing API           |
+| **Service Layer**    | gRPC (Go)                  | Inter-service communication |
+| **Workflow Engine**  | Temporal.io                | Orchestration & reliability |
+| **Database**         | PostgreSQL 15              | Data persistence            |
+| **Messaging**        | Kafka (segmentio/kafka-go) | Event streaming             |
+| **External API**     | Shippo REST API            | Shipping & tracking         |
+| **Containerization** | Docker + Docker Compose    | Local development           |
+| **Protocol**         | Protocol Buffers           | Service contracts           |
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Go 1.24.4+
+- Docker & Docker Compose
+- Shippo API Key (sign up at [goshippo.com](https://goshippo.com))
+
+### Environment Setup
+
+1. **Clone the repository** (with permission):
+
+```bash
+git clone https://github.com/Tanmoy095/LogiSynapse.git
+cd LogiSynapse
+```
+
+2. **Create `.env` file** in the root:
+
+```env
+# Database
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=logisyncdb
+
+# Shippo API
+SHIPPO_API_KEY=shippo_test_your_key_here
+
+# Kafka
+KAFKA_BROKER=localhost:9092
+KAFKA_TOPIC=shipment-events
+
+# Temporal
+TEMPORAL_HOST_PORT=temporal:7233
+TEMPORAL_VERSION=1.24.2
+TEMPORAL_UI_VERSION=2.26.2
+```
+
+3. **Start all services**:
+
+```bash
+docker-compose up --build
+```
+
+4. **Access the services**:
+
+- GraphQL Playground: `http://localhost:8080`
+- Temporal Web UI: `http://localhost:8088`
+- Shipment Service (gRPC): `localhost:50051`
+- PostgreSQL: `localhost:5432`
+- Temporal DB: `localhost:5433`
+
+### Running Services Locally (Development)
+
+#### Shipment Service
+
+```bash
+cd services/shipment-service
+go mod tidy
+export SHIPPO_API_KEY="your_key"
+export DB_HOST="localhost"
+# ... other env vars
+go run cmd/main.go
+```
+
+#### Workflow Orchestrator
+
+```bash
+cd services/workflow-orchestrator
+go mod tidy
+export TEMPORAL_HOST_PORT="localhost:7233"
+# ... other env vars
+go run cmd/main.go
+```
+
+#### GraphQL Gateway
+
+```bash
+cd services/graphql-gateway
+go mod tidy
+export SHIPMENT_SERVICE_ADDR="localhost:50051"
+go run cmd/main.go
+```
+
+## 📝 Key Implementation Details
+
+### Temporal Workflow Architecture
+
+#### Workflow Definition (`create_shipment_workflow.go`)
+
+The `CreateShipmentWorkflow` orchestrates three activities in sequence:
 
 ```go
-// convert proto enum to DB string
-func protoStatusToDB(s proto.ShipmentStatus) string {
-    return s.String() // generated enum has String() that returns the textual name
+func CreateShimentWorkflow(ctx workflow.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
+    // Step 1: Call Shippo API
+    var shippoResult contracts.Shipment
+    workflow.ExecuteActivity(ctx, "ACTIVITY_CallShippoAPI", shipment).Get(ctx, &shippoResult)
+
+    // Step 2: Save to Database
+    var storedShipment contracts.Shipment
+    workflow.ExecuteActivity(ctx, "ACTIVITY_SaveShipmentToDB", shippoResult).Get(ctx, &storedShipment)
+
+    // Step 3: Publish Kafka Event
+    workflow.ExecuteActivity(ctx, "ACTIVITY_PublishKafkaEvent", storedShipment).Get(ctx, nil)
+
+    return storedShipment, nil
+}
+```
+
+**Retry Configuration**:
+
+- Initial interval: 1 second
+- Backoff coefficient: 2.0 (exponential)
+- Maximum interval: 1 minute
+- Maximum attempts: 100
+- Activity timeout: 45 seconds
+
+#### Activity Implementation (`shipment_activities.go`)
+
+**`ACTIVITY_CallShippoAPI`**:
+
+- Validates package dimensions
+- Constructs Shippo API request with dynamic parcel data
+- Sends HTTP POST to `https://api.goshippo.com/shipments`
+- Parses response to extract tracking number, status, label URL
+- Maps Shippo status strings to proto enums
+
+**`ACTIVITY_SaveShipmentToDB`**:
+
+- Wraps the store's `CreateShipment` method
+- Uses the injected Store interface for testability
+
+**`ACTIVITY_PublishKafkaEvent`**:
+
+- Publishes `shipment.created` event
+- Uses injected Kafka Producer interface
+
+#### Worker Setup (`cmd/main.go`)
+
+Dependencies are injected at worker startup:
+
+```go
+activityHost := &activities.ShipmentActivities{
+    Store:     shipmentStore,               // From shared/config
+    Producer:  producer,                    // Kafka producer
+    ShippoKey: os.Getenv("SHIPPO_API_KEY"),
+    Client:    &http.Client{Timeout: 10 * time.Second},
 }
 
-// map DB string to proto enum
-func dbStringToProtoStatus(v string) proto.ShipmentStatus {
-    if i, ok := proto.ShipmentStatus_value[v]; ok {
-        return proto.ShipmentStatus(i)
+w := worker.New(c, "SHIPMENT_TASK_QUEUE", worker.Options{})
+w.RegisterWorkflow(workflow.CreateShimentWorkflow)
+w.RegisterActivity(activityHost.ACTIVITY_CallShippoAPI)
+// ... register other activities
+```
+
+### Shared Module Refactoring
+
+#### Contracts (`shared/contracts/shipment.model.go`)
+
+Single source of truth for domain models:
+
+```go
+type Shipment struct {
+    ID             string
+    Origin         string
+    Destination    string
+    Eta            string
+    Status         proto.ShipmentStatus  // Proto enum!
+    Carrier        Carrier
+    TrackingNumber string
+    Length         float64
+    Width          float64
+    Height         float64
+    Weight         float64
+    Unit           string
+}
+```
+
+**Benefits**:
+
+- No duplication across services
+- Proto enum integration eliminates string mismatches
+- All services use identical model
+
+#### Config (`shared/config/config.go`)
+
+Centralized infrastructure configuration:
+
+```go
+type CommonConfig struct {
+    DB_USER      string
+    DB_PASSWORD  string
+    DB_NAME      string
+    DB_HOST      string
+    DB_PORT      string
+    KAFKA_TOPIC  string
+    KAFKA_BROKER string
+}
+
+func (c *CommonConfig) GetDBURL() string {
+    return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", ...)
+}
+```
+
+Both `shipment-service` and `workflow-orchestrator` use this for DB connection.
+
+#### Kafka Abstraction (`shared/kafka/producer.go`)
+
+Interface-based design for testability:
+
+```go
+type Publisher interface {
+    Publish(ctx context.Context, key string, value interface{}) error
+    Close() error
+}
+```
+
+Activities use the interface, making them unit-testable with mocks.
+
+### Proto Enum System
+
+#### Definition (`shared/proto/shipment.proto`)
+
+```protobuf
+enum ShipmentStatus {
+  PENDING = 0;
+  PRE_TRANSIT = 1;
+  IN_TRANSIT = 2;
+  DELIVERED = 3;
+  CANCELLED = 4;
+}
+```
+
+#### Status Mapping
+
+Activities map Shippo strings to enums:
+
+```go
+func mapShippoStatusToProto(s string) proto.ShipmentStatus {
+    switch s {
+    case "PRE_TRANSIT":
+        return proto.ShipmentStatus_PRE_TRANSIT
+    case "IN_TRANSIT":
+        return proto.ShipmentStatus_IN_TRANSIT
+    // ...
+    default:
+        return proto.ShipmentStatus_PENDING
     }
-    return proto.ShipmentStatus_PENDING // default or choose whichever default you want
 }
 ```
 
-Then use `protoStatusToDB(sh.Status)` in INSERT/UPDATE and `dbStringToProtoStatus(statusFromDB)` when reading.
+## 🧪 Testing & Development
 
-Note: Current code passes `shipment.Status` directly to SQL placeholders; since `shipment.Status` is an enum (backed by int32) that will be sent as an integer — but the DB column is TEXT, which may coerce or error depending on driver and DB schema. Explicit conversion is safer.
-
-## Environment variables used
-
-- `SHIPPO_API_KEY` — Shippo API token used to call external Shippo endpoints.
-- DB-related env vars used by `config.LoadConfig()` (check `config/config.go`) — typically `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`, `DB_NAME`, etc.
-- Any Kafka bootstrap or topic env vars used by `internal/kafka` (if present).
-
-## Build & run (development)
-
-From repository root you can build and run the shipment service locally.
-
-1. Build the binary:
+### Build Verification
 
 ```bash
-cd services/shipment-service
-go build ./...   # builds service
-```
-
-2. Run (ensure env vars are set):
-
-```bash
-export SHIPPO_API_KEY="your-key"
-# export DB_... env vars that config.LoadConfig needs
-./shipment-service  # or run with `go run ./cmd` during development
-```
-
-3. Or use Docker / docker-compose if your workspace includes a compose file. The repo contains a `docker-compose.yml` that wires services together. Use docker-compose to start Postgres and shipment-service as defined.
-
-## How to test and lint locally
-
-- Unit tests: add tests under `service` and `store` packages and run:
-
-```bash
-go test ./services/shipment-service/...
-```
-
-- Build test (typecheck + compile):
-
-```bash
-cd services/shipment-service
+# Test all modules compile
+cd /path/to/LogiSynapse
 go build ./...
+
+# Specific service
+cd services/shipment-service
+go build ./cmd
 ```
 
-If any compile failures appear after the enum change, they most commonly involve:
+### Module Dependencies
 
-- string vs enum comparisons (replace `== "PRE_TRANSIT"` with `== proto.ShipmentStatus_PRE_TRANSIT`)
-- struct field name mismatches (ETA vs Eta)
-- DB mapping: explicit conversion between enum and DB textual representation.
+Each service uses `replace` directives for local development:
 
-## Open items / next steps
+**`services/workflow-orchestrator/go.mod`**:
 
-1. Postgres store mapping: change `store/postgres.go` to convert enums to string when writing and parse string->enum when reading (see helper above). This will prevent type mismatches and keep DB readable.
-2. Re-run `protoc` to regenerate proto Go files if you change `shipment.proto` further; keep generated files in `shared/proto/` consistent with the `.proto` source.
-3. Add unit tests that mock the Shippo API and DB to assert behavior for create/update/delete and verify status transitions.
-4. Make sure GraphQL gateway's models and generated code handle the enum changes (GraphQL enums vs proto enums) and convert appropriately.
-5. Consider adding validation that proto enum values are within expected set when unmarshalling external inputs.
+```go
+replace github.com/Tanmoy095/LogiSynapse/shared => ../../shared
+replace github.com/Tanmoy095/LogiSynapse/services/shipment-service => ../shipment-service
+```
 
-## Quick troubleshooting checklist
+After changes, run:
 
-- Compile error: mismatched types when comparing `proto.ShipmentStatus` to string -> replace string literal with `proto.ShipmentStatus_*` or convert to string before comparing.
-- DB errors inserting status -> convert enum to string using `status.String()` prior to SQL exec.
-- Missing fields errors (e.g., `ETA` vs `Eta`) -> check internal model field names and use consistent casing.
+```bash
+cd services/workflow-orchestrator
+go mod tidy
+```
 
-## Contact / notes
+### Docker Compose Services
 
-If you want, I can:
+**Services running**:
 
-- Update `store/postgres.go` to add explicit enum <-> string mapping (safe DB behavior) and run `go build` to verify compilation.
-- Add unit tests for the mapping and `mapShippoStatusToProto` behavior.
+1. `postgres` — Application database (port 5432)
+2. `temporal-db` — Temporal's database (port 5433)
+3. `temporal` — Temporal server (gRPC on 7233)
+4. `temporal-ui` — Web UI (port 8088)
+5. `shipment-service` — gRPC API (port 50051)
+6. `graphql-gateway` — GraphQL API (port 8080)
+7. `workflow-orchestrator` — Temporal worker (no exposed port)
 
-Would you like me to implement the DB mapping in `store/postgres.go` next and run `go build` to verify the project compiles? I can do that now.
-...............................................
+**Healthchecks**:
 
-# LogiSynapse
+- Postgres services wait for `pg_isready`
+- Shipment service waits for postgres to be healthy
+- Temporal waits for temporal-db to be healthy
 
-LogiSynapse is a shipment service application designed to manage logistics operations, including creating, updating, and canceling shipments, generating shipping labels, and comparing carrier rates. Built with Go and PostgreSQL, it integrates with Shippo’s API for real-time tracking and rate comparison, inspired by systems like Amazon and FedEx.
+## 🐛 Troubleshooting
 
-## Features
+### Common Issues
 
-- **Create Shipments**: Add new shipments with dynamic package dimensions and tracking details.
-- **Update Shipments**: Modify shipment details (e.g., destination, ETA) for shipments in `PRE_TRANSIT` status.
-- **Cancel Shipments**: Mark shipments as `CANCELLED` using Shippo’s API for label voiding.
-- **Rate Comparison**: Fetch and compare shipping rates from carriers like FedEx and UPS via Shippo’s `/rates` endpoint.
-- **Label Generation**: Generate printable shipping labels through Shippo’s API.
-- **Real-Time Tracking**: Supports tracking updates, with planned webhook integration for instant status changes.
+**1. Go module errors**: `module not found`
 
-## Installation and Usage
+```bash
+# Solution: Ensure replace directives are correct
+cd services/workflow-orchestrator
+go mod edit -replace github.com/Tanmoy095/LogiSynapse/shared=../../shared
+go mod tidy
+```
 
-This repository is primarily for viewing and demonstration purposes. To explore the code or run locally (with permission):
+**2. Temporal connection refused**
 
-1. Clone the repository: `git clone https://github.com/Tanmoy095/LogiSynapse.git`
-2. Install dependencies: `go mod tidy`
-3. Configure PostgreSQL and Shippo API keys in a `.env` file (not included).
-4. Run the service: `go run .`
+```bash
+# Solution: Check Temporal server is running
+docker-compose ps temporal
+docker-compose logs temporal
 
-**Note**: Unauthorized use or modification is prohibited without explicit permission from the owner.
+# Verify TEMPORAL_HOST_PORT matches your setup
+# Docker: temporal:7233
+# Local: localhost:7233
+```
 
-## License
+**3. Shippo API errors (401 Unauthorized)**
 
-LogiSynapse is licensed under the [Creative Commons Attribution 4.0 International License (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). You may share and adapt the material, provided you:
+```bash
+# Solution: Verify API key format
+echo $SHIPPO_API_KEY
+# Should start with: shippo_test_... or shippo_live_...
+```
 
-- Give appropriate credit to Tanmoy095.
-- Include a link to the license.
-- Indicate if changes were made.
-  See the [LICENSE](LICENSE) file for details.
+**4. Proto enum vs string mismatches**
 
-## Usage Restrictions
+```go
+// ❌ Wrong
+if shipment.Status == "PENDING" { ... }
 
-This repository is for viewing only unless explicit permission is granted by Tanmoy095. Unauthorized cloning, copying, distribution, or use of the code is prohibited, except as allowed under the CC BY 4.0 license with proper attribution. Contributions (e.g., pull requests, issues) are not accepted without prior approval.
+// ✅ Correct
+if shipment.Status == proto.ShipmentStatus_PENDING { ... }
 
-## Contact
+// Converting to string
+statusStr := shipment.Status.String()  // "PENDING"
+```
 
-For inquiries or permission requests, contact Tanmoy095 via GitHub.
+**5. Worker not picking up workflows**
+
+```bash
+# Check worker logs
+docker-compose logs workflow-orchestrator
+
+# Verify task queue name matches
+# Worker: "SHIPMENT_TASK_QUEUE"
+# Client: Must use same queue name when starting workflow
+```
+
+## 📋 Recent Development History
+
+Based on recent git commits:
+
+1. **e9b1157** (Latest) — Implement workflow-orchestrator and refactor shared modules
+
+   - Created full Temporal worker service
+   - Moved models to `shared/contracts/`
+   - Centralized config in `shared/config/`
+
+2. **b622e1c** — Implement CreateShipment workflow and worker setup
+
+   - Defined 3-step workflow
+   - Implemented activities with Shippo integration
+   - Added retry policies and timeouts
+
+3. **abe8413** — Centralize shared models into 'contracts' and add Temporal to compose
+
+   - Added Temporal services to docker-compose
+   - Created `shared/contracts/` package
+   - Eliminated model duplication
+
+4. **0f29e94** — Centralize shipment proto & add testable Kafka producer
+
+   - Moved proto to `shared/proto/`
+   - Created `Publisher` interface for Kafka
+   - Made activities testable
+
+5. **6bfa063** — Centralize shipment proto, unify ShipmentStatus enum
+   - Single proto definition for all services
+   - Enum-based status system
+   - Eliminated string-based status bugs
+
+### Key Architectural Decisions
+
+**Why Temporal?**
+
+- Ensures shipment creation is atomic across 3 systems (Shippo, DB, Kafka)
+- Automatic retries prevent data loss from transient failures
+- Workflow history provides audit trail
+- Simplifies error handling and compensation logic
+
+**Why Shared Contracts?**
+
+- Single source of truth eliminates sync issues
+- Proto enums prevent string typos
+- All services compile against same types
+- Refactoring becomes safer
+
+**Why Interface-Based Dependencies?**
+
+- Activities can be unit tested with mocks
+- Swap implementations without changing workflow code
+- Enables local development without Kafka/Postgres
+
+## 📚 Further Documentation
+
+### Key Files to Study
+
+**Understanding Temporal Implementation**:
+
+1. `services/workflow-orchestrator/cmd/main.go` — Worker setup & DI
+2. `services/workflow-orchestrator/internal/workflow/create_shipment_workflow.go` — Workflow logic
+3. `services/workflow-orchestrator/internal/activities/shipment_activities.go` — Activity implementations
+
+**Understanding Shared Modules**:
+
+1. `shared/contracts/shipment.model.go` — Domain model
+2. `shared/config/config.go` — Infrastructure config
+3. `shared/proto/shipment.proto` — Service contract
+4. `shared/kafka/producer.go` — Event publishing
+
+**Understanding Service Layer**:
+
+1. `services/shipment-service/handler/grpc/shipment.handler.grpc.go` — gRPC handlers
+2. `services/shipment-service/service/shipment.service.go` — Business logic
+3. `services/shipment-service/store/postgres.go` — Data access
+
+### Next Steps for Development
+
+1. **Add Unit Tests**:
+
+   - Mock Store and Producer interfaces
+   - Test activities in isolation
+   - Test workflow logic with Temporal test framework
+
+2. **Implement UpdateShipment Workflow**:
+
+   - Similar 3-step pattern
+   - Add compensation logic for failures
+
+3. **Add Observability**:
+
+   - Structured logging with context
+   - Distributed tracing across services
+   - Metrics for workflow execution times
+
+4. **Enhance Error Handling**:
+   - Custom error types for different failure modes
+   - Better error messages in GraphQL responses
+   - Detailed workflow failure reasons in Temporal UI
+
+## 📄 License
+
+LogiSynapse is licensed under the [Creative Commons Attribution 4.0 International License (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/).
+
+**You may**:
+
+- Share and adapt the material
+- Use for commercial purposes
+
+**You must**:
+
+- Give appropriate credit to Tanmoy095
+- Include a link to the license
+- Indicate if changes were made
+
+See the [LICENSE](LICENSE) file for details.
+
+## ⚠️ Usage Restrictions
+
+This repository is primarily for **viewing and demonstration purposes**.
+
+**Unauthorized activities prohibited without explicit permission**:
+
+- Cloning for production use
+- Redistribution without attribution
+- Commercial deployment
+- Removal of attribution
+
+**Contributions**: Pull requests and issues are not accepted without prior approval.
+
+## 📧 Contact
+
+For inquiries, permission requests, or collaboration:
+
+- GitHub: [@Tanmoy095](https://github.com/Tanmoy095)
+- Repository: [LogiSynapse](https://github.com/Tanmoy095/LogiSynapse)
+
+---
+
+**Built with ❤️ using Go, Temporal, gRPC, and GraphQL**

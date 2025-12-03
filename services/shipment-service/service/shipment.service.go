@@ -1,4 +1,5 @@
-// service/shipment.go
+//shipment-service/service/shipment.service.go
+
 package service
 
 import (
@@ -11,198 +12,89 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Tanmoy095/LogiSynapse/shared/contracts"
-	pkgkafka "github.com/Tanmoy095/LogiSynapse/shared/kafka"
-	"github.com/Tanmoy095/LogiSynapse/shared/proto"
-
 	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/store"
+	"github.com/Tanmoy095/LogiSynapse/shared/contracts"
+	"github.com/Tanmoy095/LogiSynapse/shared/proto"
+	"go.temporal.io/sdk/client"
 )
 
-// ShipmentService handles business logic for shipments, using a ShipmentStore for data access.
-// Analogy: The chef who uses the pantry (store) to prepare dishes (shipments).
+// ShipmentService handles business logic.
+//
+//	We removed 'producer', 'httpClient', and 'shippoKey' from this struct.
+//
+// Why? Because the "heavy lifting" (API calls, DB transactions) is now done by the
+// Workflow Worker. This Service is now just a "Request Initiator".
 type ShipmentService struct {
-	store      store.ShipmentStore // Use interface instead of concrete MemoryStore
-	producer   pkgkafka.Publisher
-	shippoKey  string
-	httpClient *http.Client
+	store          store.ShipmentStore
+	temporalClient client.Client // <--- NEW: The connection to the Temporal Server
 }
 
-// NewShipmentService creates a new service with the given store.
-// Analogy: Hires a chef and gives them access to the pantry's menu (interface).
-func NewShipmentService(store store.ShipmentStore, producer pkgkafka.Publisher) *ShipmentService {
+// NewShipmentService creates a new service.
+// We now pass the Temporal Client instead of the Kafka Producer.
+func NewShipmentService(store store.ShipmentStore, temporalClient client.Client) *ShipmentService {
 	return &ShipmentService{
-		store:     store,
-		producer:  producer,
-		shippoKey: os.Getenv("SHIPOO_API_KEY"),
-		//http client with timeout context
-
-		//Timeout Prevents hanging api calls
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		store:          store,
+		temporalClient: temporalClient,
 	}
 }
 
-// CreateShipment validates and stores a new shipment.
+// CreateShipment is the "Entry Point".
+// Instead of doing the work itself, it delegates everything to Temporal.
 func (s *ShipmentService) CreateShipment(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
-	// Basic validation
+	// catch bad data *before* starting a workflow to save resources.
 	if shipment.Origin == "" || shipment.Destination == "" {
 		return contracts.Shipment{}, errors.New("missing required fields")
 	}
-	// validate package dimenssions
-	if shipment.Length <= 0 || shipment.Width <= 0 || shipment.Height <= 0 || shipment.Weight <= 0 || shipment.Unit == "" {
-		return contracts.Shipment{}, errors.New("Invalid package Dimensions")
 
+	// Define Workflow Options
+	// TaskQueue: This MUST match the queue name defined in your Worker (workflow-orchestrator/cmd/main.go).
+	// ID: We use the shipment ID (or generate one) to prevent duplicates (Deduping).
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        "shipment-create-" + shipment.ID,
+		TaskQueue: "SHIPMENT_TASK_QUEUE",
 	}
-	shippoReq := map[string]interface{}{
-		"address_from": map[string]string{
-			"city":    shipment.Origin, // e.g., "Dhaka"
-			"country": "US",            // Adjust based on origin
-		},
-		"address_to": map[string]string{
-			"city":    shipment.Destination, // e.g., "Berlin"
-			"country": "BD",                 // Adjust for destination
-		},
-		// Dynamic dimensions from mutation
-		// Why: Uses client input for accurate shipping, like Amazon
-		"parcels": []map[string]interface{}{
-			{
-				"length": strconv.FormatFloat(shipment.Length, 'f', 2, 64), // e.g., "12.00"
-				"width":  strconv.FormatFloat(shipment.Width, 'f', 2, 64),  // e.g., "8.00"
-				"height": strconv.FormatFloat(shipment.Height, 'f', 2, 64), // e.g., "1.00"
-				"weight": strconv.FormatFloat(shipment.Weight, 'f', 2, 64), // e.g., "0.50"
-				"unit":   shipment.Unit,                                    // e.g., "in"
-			},
-		},
-		// Default: let Shippo choose carrier
-		// Why: Optimizes cost if client doesn’t specify
-		"carrier_account": "",
-	}
-	if shipment.Carrier.Name != "" {
-		carrierMap := map[string]string{
-			"FedEx": "fedex",
-			"UPS":   "ups",
-			"DHL":   "dhl_express",
-		}
-		if carrierID, ok := carrierMap[shipment.Carrier.Name]; ok {
-			shippoReq["carrier_account"] = carrierID
-		}
 
-	}
-	//convert to JSON
-	//Shipoo Api Requires JSON payload
-	reqBody, err := json.Marshal(shippoReq)
+	// Execute the Workflow
+	//  We use 'ExecuteWorkflow' instead of 'SignalWithStart' because
+	// the gRPC client (frontend) is waiting for a response (the Tracking Number).
+	// This call sends the inputs to the Temporal Server.
+	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, "CreateShipmentWorkflow", shipment)
 	if err != nil {
-		return contracts.Shipment{}, errors.New("failed to marshal Shippo request: " + err.Error())
+		return contracts.Shipment{}, err
 	}
-	//Create Post request to shippo's /shipment endpoint
-	//Book the Shipment
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.goshippo.com/shipments", bytes.NewBuffer(reqBody))
+
+	// waits until the Worker finishes all activities
+	// (Call Shippo -> Save DB -> Publish Kafka) and returns the final result.
+	var result contracts.Shipment
+	err = we.Get(ctx, &result)
 	if err != nil {
-		return contracts.Shipment{}, errors.New("failed to create Shippo request: " + err.Error())
-	}
-	req.Header.Set("Authorization", "ShippoToken "+s.shippoKey)
-	req.Header.Set("Content-Type", "application/json")
-	//Send Request
-	//Gets Tracking Number status and Url
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return contracts.Shipment{}, errors.New("failed to call Shippo API: " + err.Error())
-
-	}
-	//Ensure and check Shipment creation Succeeded
-	if resp.StatusCode != http.StatusCreated {
-		return contracts.Shipment{}, errors.New("Shippo API error: status " + resp.Status)
-
-	}
-	//Parse Shippo Response
-	//Extract real tracking data
-	var shippoResp struct {
-		ObjectID       string `json:"object_id"`             // Shippo’s shipment ID
-		TrackingNumber string `json:"tracking_number"`       // e.g., "123456789"
-		TrackingURL    string `json:"tracking_url_provider"` // e.g., "https://shippo.com/track/123456789"
-		Status         string `json:"status"`                // e.g., "PRE_TRANSIT"
-		LabelURL       string `json:"label_url"`             // Shipping label URL
-		Carrier        string `json:"carrier"`               // e.g., "fedex"
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&shippoResp); err != nil {
-		return contracts.Shipment{}, errors.New("failed to parse Shippo response: " + err.Error())
+		return contracts.Shipment{}, err
 	}
 
-	//Update response with shippo data
-	//Replace static data with shippo Data
-	shipment.ID = shippoResp.ObjectID
-	shipment.TrackingNumber = shippoResp.TrackingNumber
-	// Map Shippo status string to proto enum
-	shipment.Status = mapShippoStatusToProto(shippoResp.Status)
-	shipment.Carrier = contracts.Carrier{
-		Name:        shipment.Carrier.Name,
-		TrackingURL: shipment.Carrier.TrackingURL,
-	}
-	if shipment.Carrier.Name == "" {
-		shipment.Carrier.Name = shippoResp.Carrier //User shippos if carrier not provided
-
-	}
-	shipment.Length = shipment.Length
-	shipment.Width = shipment.Width
-	shipment.Height = shipment.Height
-	shipment.Weight = shipment.Weight
-	shipment.Unit = shipment.Unit
-
-	// Store the shipment using the interface
-	//store it to postgres
-	created, err := s.store.CreateShipment(ctx, shipment)
-	// Create a Kafka event payload with the event type and shipment details.
-	// Using map[string]interface{} for flexibility in event structure.
-	//publish shipment.created event
-	//notifies status-Tracker service for real time update
-	event := map[string]interface{}{
-		"event":   "shipment.created", // Identifies the event type.
-		"payload": created,            // Includes shipment details (ID, Origin, Destination, etc.).
-	}
-	// Publish the event to Kafka in a goroutine for fire-and-forget.
-	// Uses the shipment ID as the key to ensure ordered processing in partitions.
-	if s.producer != nil {
-		go s.producer.Publish(context.Background(), created.ID, event)
-	}
-
-	// Return the created shipment for the gRPC response.
-	return created, nil
+	return result, nil
 }
 
-//Update_Shipment updates shipment details for pre_Transit shipments
-
-// / GetShipments retrieves shipments based on filters and pagination.
-// - origin, status, destination: Filter criteria.
-// - limit, offset: Pagination parameters.
-
-// Update shipment
-// Update shipment update shipment details for --> pre transit shipments
+// Updateshipment updates shipment details in DB.
+// 🟡 REFACTOR STATUS: PARTIAL
+// We kept the DB update because we still have access to 's.store'.
+// We DISABLED the Kafka Event because we removed 's.producer'.
+// TODO: In Phase 5, we should turn this into a 'Signal' to the workflow.
 func (s *ShipmentService) Updateshipment(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
-	//validate shipment id and fields
-	//ensure valid update request
 	if shipment.ID == "" {
 		return contracts.Shipment{}, errors.New("missing shipment id")
-
 	}
-	if shipment.Origin == "" && shipment.Destination == "" && shipment.Eta == "" && shipment.Length == 0 {
 
-		return contracts.Shipment{}, errors.New("no fields to update")
-
-	}
-	//Get existing shipment
+	// Validate existence and status (Read-only check)
 	current, err := s.store.GetShipment(ctx, shipment.ID)
 	if err != nil {
-		return contracts.Shipment{}, errors.New("no failed to get shipments: " + err.Error())
-
+		return contracts.Shipment{}, errors.New("failed to get shipment: " + err.Error())
 	}
-
-	//Prevents update if not pre_transit
 
 	if current.Status != proto.ShipmentStatus_PRE_TRANSIT {
 		return contracts.Shipment{}, errors.New("can only update pre_Transit shipment")
-
 	}
-	//Marge updated fields
-	//preserves existing data for unchanged fields
+
+	// Merge logic (Keep existing values if new ones are empty)
 	updatedShipment := contracts.Shipment{
 		ID:             shipment.ID,
 		Origin:         ifEmpty(shipment.Origin, current.Origin),
@@ -217,124 +109,77 @@ func (s *ShipmentService) Updateshipment(ctx context.Context, shipment contracts
 		Weight:         ifZero(shipment.Weight, current.Weight),
 		Unit:           ifEmpty(shipment.Unit, current.Unit),
 	}
-	//Update in postgres
-	if err := s.store.UpdateShipment(ctx, updatedShipment); err != nil {
+	//Execute Workflow (Worker handles DB Update + Kafka Event)
+
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        "shipment-update-" + updatedShipment.ID,
+		TaskQueue: "SHIPMENT_TASK_QUEUE",
+	}
+
+	// Execute the Workflow
+	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, "UpdateShipmentWorkflow", updatedShipment)
+	if err != nil {
 		return contracts.Shipment{}, err
+
 	}
-	//Publish shipment.updated event
-	//Notify status tacker of change
-	event := map[string]interface{}{
-		"event":   "shipment.updated",
-		"payload": updatedShipment,
-	}
-	if s.producer != nil {
-		go s.producer.Publish(ctx, updatedShipment.ID, event)
-	}
-	return updatedShipment, nil
+	// 4. Wait for Result
+	var result contracts.Shipment
+	err = we.Get(ctx, &result)
+	return result, err
 
 }
 
-// Delete shipment cancel a pre-transit shipment and voids it in shippo
-// use updateSHipment to set CANCELLED status instead of separate store method
+// DeleteShipment cancels a shipment.
+// DeleteShipment starts the CancelShipmentWorkflow
+// We DISABLED the Shippo API call because we removed 's.httpClient' and 's.shippoKey'.
 func (s *ShipmentService) DeleteShipment(ctx context.Context, id string) error {
-	// Get shipment to check status
-	// Why: Only PRE_TRANSIT shipments can be canceled
+	if id == "" {
+		return errors.New("missing shipment id")
+	}
 	shipment, err := s.store.GetShipment(ctx, id)
 	if err != nil {
 		return errors.New("failed to get shipment: " + err.Error())
 	}
 
-	// Prevent deletion if not PRE_TRANSIT
-	// Why: Matches real-world logistics restrictions
 	if shipment.Status != proto.ShipmentStatus_PRE_TRANSIT {
 		return errors.New("can only delete PRE_TRANSIT shipments")
 	}
+	// Execute Workflow (Worker handles Shippo Void API + DB Update + Kafka Event)
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        "shipment-cancel-" + id,
+		TaskQueue: "SHIPMENT_TASK_QUEUE",
+	}
 
-	// Call Shippo to void the shipment
-	// Why: Cancels in Shippo to prevent charges (simplified; assumes id is transaction ID)
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.goshippo.com/transactions/"+id+"/void", nil)
+	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, "CancelShipmentWorkflow", shipment)
 	if err != nil {
-		return errors.New("failed to create Shippo void request: " + err.Error())
-	}
-	req.Header.Set("Authorization", "ShippoToken "+s.shippoKey)
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return errors.New("failed to call Shippo void API: " + err.Error())
-	}
-	defer resp.Body.Close()
-
-	// Check for success
-	// Why: Ensures cancellation succeeded
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("Shippo void API error: status " + resp.Status)
-	}
-
-	// Update status to CANCELLED
-	// Why: Marks shipment as canceled in database using UpdateShipment
-	shipment.Status = proto.ShipmentStatus_CANCELLED
-	if err := s.store.UpdateShipment(ctx, shipment); err != nil {
 		return err
 	}
 
-	// Publish shipment.cancelled event
-	// Why: Notifies status-tracker
-	event := map[string]interface{}{
-		"event":   "shipment.cancelled",
-		"payload": shipment,
-	}
-	if s.producer != nil {
-		go s.producer.Publish(ctx, id, event)
-	}
+	//Wait for Completion
+	return we.Get(ctx, nil)
 
-	return nil
 }
 
+// GetRates fetches carrier rates.
+// Since this is a "Read-Only" operation (it doesn't change state), it doesn't strictly *need* a Workflow.
+// However, since we removed 's.httpClient' from the struct, we instantiate a NEW client locally here.
+// This allows the function to keep working without the struct dependency.
 // GetRates fetches carrier rates from Shippo.
-// Why: Enables clients to compare shipping options, like Amazon’s checkout.
-// Note: Doesn’t use store since it’s an API call.
-
-func (s *ShipmentService) GetShipments(origin string, status proto.ShipmentStatus, destination string, limit, offset int32) ([]contracts.Shipment, error) {
-	return s.store.GetShipments(context.Background(), origin, status, destination, limit, offset)
-}
-
-// mapShippoStatusToProto maps Shippo status strings to the proto ShipmentStatus enum
-func mapShippoStatusToProto(s string) proto.ShipmentStatus {
-	switch s {
-	case "PRE_TRANSIT":
-		return proto.ShipmentStatus_PRE_TRANSIT
-	case "IN_TRANSIT":
-		return proto.ShipmentStatus_IN_TRANSIT
-	case "DELIVERED":
-		return proto.ShipmentStatus_DELIVERED
-	case "PENDING":
-		return proto.ShipmentStatus_PENDING
-	case "CANCELLED":
-		return proto.ShipmentStatus_CANCELLED
-	default:
-		return proto.ShipmentStatus_PENDING
-	}
-}
-
-// GetRates fetches carrier rates from Shippo.
-// Why: Enables clients to compare shipping options, like Amazon’s checkout.
+// Enables clients to compare shipping options, like Amazon’s checkout.
 // Note: Doesn’t use store since it’s an API call.
 func (s *ShipmentService) GetRates(ctx context.Context, origin, destination string, length, width, height, weight float64, unit string) ([]contracts.Rate, error) {
-	// Validate input
-	// Why: Ensures Shippo gets valid data
 	if origin == "" || destination == "" || length <= 0 || width <= 0 || height <= 0 || weight <= 0 || unit == "" {
 		return nil, errors.New("invalid rate input")
 	}
-	// Prepare Shippo rate request
-	// Why: Shippo needs address and parcel details for rates
+
+	// 🟢 NEW: Create a local HTTP client just for this request
+	localClient := &http.Client{Timeout: 10 * time.Second}
+	// 🟢 NEW: Read the key directly from Env (since it's gone from the struct)
+	shippoKey := os.Getenv("SHIPPO_API_KEY")
+
 	rateReq := map[string]interface{}{
-		"address_from": map[string]string{
-			"city":    origin,
-			"country": "US",
-		},
-		"address_to": map[string]string{
-			"city":    destination,
-			"country": "BD",
-		},
+		"address_from": map[string]string{"city": origin, "country": "US"},
+		"address_to":   map[string]string{"city": destination, "country": "BD"},
 		"parcels": []map[string]interface{}{
 			{
 				"length": strconv.FormatFloat(length, 'f', 2, 64),
@@ -347,33 +192,27 @@ func (s *ShipmentService) GetRates(ctx context.Context, origin, destination stri
 	}
 	reqBody, err := json.Marshal(rateReq)
 	if err != nil {
-		return nil, errors.New("failed to marshal Shippo rate request: " + err.Error())
+		return nil, errors.New("marshal error: " + err.Error())
 	}
 
-	// Create POST request to Shippo’s /rates endpoint
-	// Why: Fetches available rates
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.goshippo.com/rates", bytes.NewBuffer(reqBody))
 	if err != nil {
-		return nil, errors.New("failed to create Shippo rate request: " + err.Error())
+		return nil, errors.New("req creation error: " + err.Error())
 	}
-	req.Header.Set("Authorization", "ShippoToken "+s.shippoKey)
+	req.Header.Set("Authorization", "ShippoToken "+shippoKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	// Send request
-	// Why: Gets rate options
-	resp, err := s.httpClient.Do(req)
+	// Use the LOCAL client
+	resp, err := localClient.Do(req)
 	if err != nil {
-		return nil, errors.New("failed to call Shippo rate API: " + err.Error())
+		return nil, errors.New("shippo api error: " + err.Error())
 	}
 	defer resp.Body.Close()
 
-	// Check for success
-	// Why: Ensures rates were fetched
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("Shippo rate API error: status " + resp.Status)
+		return nil, errors.New("shippo status error: " + resp.Status)
 	}
-	// Parse response
-	// Why: Extracts carrier rates
+
 	var rateResp struct {
 		Rates []struct {
 			Carrier       string `json:"carrier"`
@@ -383,10 +222,9 @@ func (s *ShipmentService) GetRates(ctx context.Context, origin, destination stri
 		} `json:"rates"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&rateResp); err != nil {
-		return nil, errors.New("failed to parse Shippo rate response: " + err.Error())
+		return nil, errors.New("decode error: " + err.Error())
 	}
-	// Convert to internal Rate model
-	// Why: Prepares rates for gRPC response
+
 	rates := make([]contracts.Rate, len(rateResp.Rates))
 	for i, r := range rateResp.Rates {
 		amount, _ := strconv.ParseFloat(r.Amount, 64)
@@ -396,23 +234,25 @@ func (s *ShipmentService) GetRates(ctx context.Context, origin, destination stri
 			Amount:        amount,
 			EstimatedDays: r.EstimatedDays,
 		}
-
 	}
 	return rates, nil
 }
 
+// GetShipments just calls the store, so it still works fine.
+func (s *ShipmentService) GetShipments(ctx context.Context, origin string, status proto.ShipmentStatus, destination string, limit, offset int32) ([]contracts.Shipment, error) {
+	return s.store.GetShipments(ctx, origin, status, destination, limit, offset)
+}
+
+// Helper functions remain unchanged
 func ifEmpty(newValue, oldValue string) string {
 	if newValue != "" {
 		return newValue
-
 	}
 	return oldValue
 }
 func ifZero(newValue, oldValue float64) float64 {
-
 	if newValue != 0 {
 		return newValue
-
 	}
 	return oldValue
 }
