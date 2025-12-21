@@ -1,6 +1,8 @@
+//services/billing-service/internal/usage/model.usage.go
+
 package usage
 
-import "github.com/docker/distribution/uuid"
+import "github.com/google/uuid"
 
 type UsagesType string
 

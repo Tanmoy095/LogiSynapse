@@ -32,8 +32,8 @@ type LedgerEntry struct {
 // NewLedgerEntry creates a new ledger entry with the provided details.
 func NewLedgerEntry(accountID uuid.UUID, amountCents int64, trnTy TransactionType, desc, refID string) *LedgerEntry {
 	return &LedgerEntry{
-		ID:          uuid.New(),
-		AccountID:   accountID,
+		ID:          uuid.New().String(),
+		AccountID:   accountID.String(),
 		AmountCents: amountCents,
 		Type:        trnTy,
 		Description: desc,

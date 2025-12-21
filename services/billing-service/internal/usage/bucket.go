@@ -1,9 +1,11 @@
+//services/billing-service/internal/usage/bucket.go
+
 package usage
 
 import (
 	"sync"
 
-	"github.com/docker/distribution/uuid"
+	"github.com/google/uuid"
 )
 
 type Bucket struct {
