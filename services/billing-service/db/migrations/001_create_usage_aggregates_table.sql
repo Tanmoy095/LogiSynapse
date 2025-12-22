@@ -1,4 +1,4 @@
--- services/billing-service/db/migrations/001_create_create_usage_aggregates_table.sql
+-- services/billing-service/db/migrations/001_create_usage_aggregates_table.sql
 
 
 -- This is the database table where Aggregated usages data will be saved durably in postgres 

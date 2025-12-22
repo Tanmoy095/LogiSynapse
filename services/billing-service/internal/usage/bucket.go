@@ -11,7 +11,7 @@ import (
 type Bucket struct {
 	mu       sync.Mutex
 	TenantID uuid.UUID
-	Type     UsagesType
+	Type     UsageType
 	Count    int64
 }
 

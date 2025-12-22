@@ -16,11 +16,14 @@ const (
 
 // UsageRecord represents aggregated usage for a billing period
 type UsageRecord struct {
-	TenantID uuid.UUID
-	Type     UsageType
-	Quantity int64
-	Year     int
-	Month    int
+	TenantID      uuid.UUID
+	UsageType     UsageType
+	TotalQuantity int64
+	BillingPeriod BillingPeriod
+}
+type BillingPeriod struct {
+	Year  int
+	Month int
 }
 
 // FlushBatch represents a single idempotent flush operation
