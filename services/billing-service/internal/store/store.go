@@ -4,20 +4,14 @@ package store
 import (
 	"context"
 
+	billingtypes "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/billingTypes"
 	"github.com/google/uuid"
-)
-
-type UsageType string
-
-const (
-	ShipmentCreated UsageType = "SHIPMENT_CREATED"
-	ApiRequest      UsageType = "API_REQUEST"
 )
 
 // UsageRecord represents aggregated usage for a billing period
 type UsageRecord struct {
 	TenantID      uuid.UUID
-	UsageType     UsageType
+	UsageType     billingtypes.UsageType
 	TotalQuantity int64
 	BillingPeriod BillingPeriod
 }

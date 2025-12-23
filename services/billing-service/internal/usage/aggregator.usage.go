@@ -12,14 +12,14 @@ import (
 	"github.com/google/uuid"
 )
 
-//The Engine Managing Workers and Events
-
+// The Engine Managing Workers and Events
 type Aggregator struct {
 	mu      sync.Mutex         //Read-write mutex—protects the buckets map (briefly, to avoid slowing everything).
 	buckets map[string]*Bucket //Map of usage buckets, keyed by tenant/account ID.
 	//key is "TenantID:Type" (e.g., "ABC:SHIPMENT_CREATED"), value is a Bucket (counter).
 	eventChan chan UsageEvent //Channel for incoming usage events.
 	//Buffered channel (holds up to 1000 events)—like a queue for pending work.
+	ctx context.Context // Root context
 
 	quitChan      chan struct{}    //Channel to signal shutdown of the aggregator.
 	wg            sync.WaitGroup   //WaitGroup to track active worker goroutines.
@@ -27,17 +27,18 @@ type Aggregator struct {
 	flushInterval time.Duration    //Interval between flushes to the store. e.g. 30*time.Second
 }
 
-func NewAggregator(store store.UsageStore, flushInterval time.Duration) *Aggregator {
+func NewAggregator(ctx context.Context, store store.UsageStore, flushInterval time.Duration) *Aggregator {
 	return &Aggregator{
 		buckets:       make(map[string]*Bucket),
-		eventChan:     make(chan UsageEvent, 1000), //Buffered channel for incoming events.
-		quitChan:      make(chan struct{}),         //Channel to signal shutdown.
+		eventChan:     make(chan UsageEvent, 10000), //Buffered channel for incoming events.
+		quitChan:      make(chan struct{}),          //Channel to signal shutdown.
+		ctx:           ctx,
 		store:         store,
 		flushInterval: flushInterval,
 	}
 }
 
-// Start Launching the backgerround woorkers to process usage events
+// Start Launching the background workers to process usage events
 func (agg *Aggregator) Start(workers int) {
 	for i := 0; i < workers; i++ {
 		agg.wg.Add(1)
@@ -52,6 +53,11 @@ func (agg *Aggregator) Start(workers int) {
 
 // Ingest is the public method to add events (Thread-Safe)
 func (agg *Aggregator) Ingest(event UsageEvent) {
+	// 1. VALIDATION: Prevent negative/zero billing
+	if event.Quantity <= 0 {
+		fmt.Printf("⚠️ Skipping invalid quantity: %d for event %s\n", event.Quantity, event.ID)
+		return
+	}
 	//case a.eventChan <- e: Tries to send (<-) the event e to the channel eventChan. If successful (channel has space), it adds the event and continues (comment: "Event sent successfully").
 	//default: If the send fails (channel full), run this instead—print a warning with the event's ID.
 	select {
@@ -59,7 +65,7 @@ func (agg *Aggregator) Ingest(event UsageEvent) {
 		//Event sent successfully
 	default:
 		// Channel full: In production, log error or push to Dead Letter Queue
-		fmt.Println("⚠️ Aggregator channel full, dropping event:", event.id)
+		fmt.Println("⚠️ Aggregator channel full, dropping event:", event.ID)
 	}
 
 }
@@ -71,9 +77,19 @@ func (agg *Aggregator) Worker(id int) {
 		case event := <-agg.eventChan:
 			agg.Process(event)
 		case <-agg.quitChan:
-			// Process remaining events in channel before quitting?
-			// For simplicity, we quit immediately, but in Prod we drain.
-			return
+			//Quit signal received,
+			//we must drain of any remaining events before exiting.
+			// drain means process all remaining events in the channel
+			//if we dont we lose everything currently buffered in eventChan
+			for {
+				select {
+				case event := <-agg.eventChan:
+					agg.Process(event)
+				default:
+					// Channel is empty, exit the worker
+					return
+				}
+			}
 		}
 
 	}
@@ -83,6 +99,7 @@ func (agg *Aggregator) Process(event UsageEvent) {
 	key := fmt.Sprintf("%s:%s", event.TenantID, event.Type) //e.g., "Tenant123:SHIPMENT_CREATED"
 	//Get or create the bucket (with lock)
 	agg.mu.Lock()
+	defer agg.mu.Unlock() //unlock after getting/creating bucket
 	bucket, exist := agg.buckets[key]
 	if !exist {
 		bucket = &Bucket{
@@ -92,8 +109,9 @@ func (agg *Aggregator) Process(event UsageEvent) {
 		}
 		agg.buckets[key] = bucket //Add new bucket to map
 	}
-	agg.mu.Unlock()
-	//Now increnent the bucket count (outside lock to minimize contention)
+	//Now increment the bucket count (outside lock to minimize contention)
+	// Move Increment INSIDE the lock.
+	// This prevents the Flusher from swapping the map while we are updating.
 	bucket.Increment(event.Quantity)
 
 }
@@ -169,5 +187,30 @@ func (agg *Aggregator) Flush(ctx context.Context) error {
 	//Flush batch with new Unique batch id  and for each bucket create usage record and append to batch.Records
 
 	//Now its time to persist the batch to the store
-	return agg.store.Flush(ctx, batch)
+	maxRetries := 3
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := agg.store.Flush(agg.ctx, batch)
+		if err == nil {
+			fmt.Printf("✅ Flush successful on attempt %d\n", attempt)
+			return nil // Success
+		}
+		fmt.Printf("Flush attempt %d failed: %v\n", attempt, err)
+		time.Sleep(time.Second * time.Duration(attempt)) // Backoff
+	}
+	//On failure marge back to buckets to avoid data loss
+	agg.mu.Lock()
+	for key, bucket := range oldBuckets { //Iterate old buckets
+		existingBucket, exists := agg.buckets[key] //Check if bucket already exists
+		if exists {
+			//Merge counts
+			existingBucket.Increment(bucket.GetCount()) //Add old count to existing bucket
+		} else {
+			// Re-add the old bucket
+			agg.buckets[key] = bucket //Re-add the old bucket
+			//This ensures no data loss on flush failure..
+		}
+	}
+	agg.mu.Unlock()
+	return fmt.Errorf("failed to flush usage data after %d attempts", maxRetries)
+
 }

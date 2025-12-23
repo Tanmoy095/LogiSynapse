@@ -13,3 +13,4 @@ CREATE TABLE IF NOT EXISTS flush_history (
     batch_id UUID PRIMARY KEY,
     flushed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
