@@ -1,4 +1,4 @@
-// services/billing-service/internal/store/store.go
+// services/billing-service/internal/usage/store/usage_store.go
 package store
 
 import (

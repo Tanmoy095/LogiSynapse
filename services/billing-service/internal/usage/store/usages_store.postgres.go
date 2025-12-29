@@ -1,4 +1,4 @@
-// services/billing-service/internal/store/usages_store.postgres.go
+// services/billing-service/internal/usage/store/usages_store.postgres.go
 package store
 
 import (

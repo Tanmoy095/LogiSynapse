@@ -1,3 +1,4 @@
+// services/billing-service/internal/accounts/account.go
 package accounts
 
 import "github.com/docker/distribution/uuid"

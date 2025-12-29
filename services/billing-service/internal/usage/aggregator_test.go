@@ -10,7 +10,7 @@ import (
 	"time"
 
 	billingtypes "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/billingTypes"
-	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/usage/store"
 	"github.com/google/uuid"
 )
 

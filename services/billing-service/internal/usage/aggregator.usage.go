@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/usage/store"
 	"github.com/google/uuid"
 )
 
