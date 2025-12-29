@@ -1,4 +1,4 @@
-package pricing
+package pricing_engine
 
 import "errors"
 

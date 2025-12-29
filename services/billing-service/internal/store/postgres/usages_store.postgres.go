@@ -1,11 +1,14 @@
-package postgres
+// services/billing-service/internal/store/postgres/usages_store.postgres.go
+
+package Postgres_Store
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 
-	storepkg "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
+	billingtypes "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/billingTypes"
+	store "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
 )
 
 type PostgresUsageStore struct { // db is the database connection (placeholder, implement as needed)
@@ -15,10 +18,10 @@ type PostgresUsageStore struct { // db is the database connection (placeholder, 
 func NewPostgresUsageStore(db *sql.DB) *PostgresUsageStore {
 	return &PostgresUsageStore{db: db}
 }
-func (store *PostgresUsageStore) Flush(ctx context.Context, batch storepkg.FlushBatch) error {
+func (ps *PostgresUsageStore) Flush(ctx context.Context, batch store.FlushBatch) error {
 	// start Transaction with context support (support for cancellation and timeouts)
 	//Why use Begin TX ? if anything fails later you can rollback and undo all changes .If everything success you commit and make he changes permanent
-	tx, err := store.db.BeginTx(ctx, nil)
+	tx, err := ps.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -80,4 +83,42 @@ func (store *PostgresUsageStore) Flush(ctx context.Context, batch storepkg.Flush
 	}
 	return nil
 
+}
+
+// GetUsageForPeriod retrieves usage records for a specific billing period (year and month)
+
+func (ps *PostgresUsageStore) GetUsageForPeriod(ctx context.Context, year int, month int) ([]store.UsageRecord, error) {
+	//This asks DB: Give me tenant, usage type, and the total for this period.”
+	query := ` 
+	SELECT tenant_id,usage_type,total_quantity
+	FROM usage_aggregates
+	WHERE billing_year=$1 AND billing_month=$2
+	` // 2. Execute the query
+	// Note: We pass the uuid.UUID directly. Most Go Postgres drivers (pq, pgx) handle this automatically.
+	rows, err := ps.db.QueryContext(ctx, query, year, month)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query usage aggregates:%w", err)
+	}
+	defer rows.Close()
+	//iterate over rows and build usage records slice
+	var usageRecords []store.UsageRecord
+	for rows.Next() {
+		var record store.UsageRecord       //Create a new record for each row
+		var uType string                   // Use a temporary uType string to receive the DB usage_type.
+		record.BillingPeriod.Year = year   // this comes form the request not from DB
+		record.BillingPeriod.Month = month //
+		//reads the three selected columns into the record fields.
+		// Order matters: scan args must match the SELECT column order.
+		if err := rows.Scan(&record.TenantID, &uType, &record.TotalQuantity); err != nil {
+			return nil, fmt.Errorf("failed to scan usage record:%w", err)
+		}
+		record.UsageType = billingtypes.UsageType(uType)
+		usageRecords = append(usageRecords, record)
+
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iteration error: %w", err)
+	}
+
+	return usageRecords, nil
 }

@@ -1,11 +1,13 @@
-package postgres
+// services/billing-service/internal/store/postgres/ledger_store.postgres.go
+
+package Postgres_Store
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 
-	storepkg "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
+	store "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
 )
 
 type PostgresLedgerStore struct {
@@ -18,7 +20,7 @@ func NewPostgresLedgerStore(db *sql.DB) *PostgresLedgerStore {
 	}
 }
 
-func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry storepkg.LedgerEntry) error {
+func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry store.LedgerEntry) error {
 	query := `
   INSERT INTO billing_ledger 
   (tenant_id,  transaction_type,reference_id, amount_cents, currency, description, created_at)

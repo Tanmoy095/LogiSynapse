@@ -10,7 +10,7 @@ import (
 	"time"
 
 	billingtypes "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/billingTypes"
-	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/usage/store"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -19,6 +19,11 @@ type MockUsageStore struct {
 	flushedData  map[string]int64 //
 	shouldFail   bool             // Simulate failure default false .. Because bool zero value is false
 	failureCount int              // Number of times to fail before succeeding
+}
+
+// GetUsageForPeriod implements [store.UsageStore].
+func (m *MockUsageStore) GetUsageForPeriod(ctx context.Context, year int, month int) ([]store.UsageRecord, error) {
+	panic("unimplemented")
 }
 
 func newMockUsageStore() *MockUsageStore {
@@ -101,7 +106,7 @@ func TestAggregator_Flush_Failure_Recovery(t *testing.T) {
 	event1 := UsageEvent{
 		ID:        "event-1",
 		TenantID:  tenantID,
-		Type:      "billingTypes.SHIPMENT_CREATED",
+		Type:      billingtypes.ShipmentCreated,
 		Quantity:  10,
 		Timestamp: time.Now().Unix(),
 	}
@@ -116,7 +121,7 @@ func TestAggregator_Flush_Failure_Recovery(t *testing.T) {
 	event2 := UsageEvent{
 		ID:        "event-2",
 		TenantID:  tenantID,
-		Type:      "billingTypes.SHIPMENT_CREATED",
+		Type:      billingtypes.ShipmentCreated,
 		Quantity:  5,
 		Timestamp: time.Now().Unix(),
 	}
@@ -127,7 +132,7 @@ func TestAggregator_Flush_Failure_Recovery(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected flush to succeed, but it failed: %v", err)
 	}
-	key := fmt.Sprintf("%s:%s", tenantID, "billingTypes.SHIPMENT_CREATED")
+	key := fmt.Sprintf("%s:%s", tenantID, billingtypes.ShipmentCreated)
 	actualTotal := MockUsageStore.flushedData[key] //should be 15 (10 from event1 + 5 from event2)
 	if actualTotal != 15 {
 		t.Errorf("data loss after recovery! Expected total 15, got %d", actualTotal)

@@ -1,7 +1,7 @@
 // services/billing-service/internal/accounts/account.go
 package accounts
 
-import "github.com/docker/distribution/uuid"
+import "github.com/google/uuid"
 
 // PlanType represents the subscription plan type for a billing account
 type PlanType string

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/usage/store"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -124,7 +124,7 @@ func (agg *Aggregator) Flusher() {
 	for {
 		select {
 		case <-ticker.C: //On each tick, flush the current usage data
-			if err := agg.Flush(context.Background()); err != nil {
+			if err := agg.Flush(agg.ctx); err != nil {
 				//In production, log error
 				fmt.Println("❌ Aggregator flush error:", err)
 			} else {
@@ -168,7 +168,7 @@ func (agg *Aggregator) Flush(ctx context.Context) error {
 
 	// Build the Batch from oldBuckets
 	batch := store.FlushBatch{
-		BatchID: uuid.New().String(),
+		BatchID: uuid.New(),
 		Records: make([]store.UsageRecord, 0, len(oldBuckets)), //Preallocate slice , 0 means no initial elements, len(oldBuckets) is capacity
 	}
 	now := time.Now().UTC() // Gets current time in UTC, e.g., 2024-06-01 12:00:00 +0000 UTC

@@ -1,4 +1,6 @@
-package postgres
+// services/billing-service/internal/store/postgres/pricingRule_store.postgres.go
+
+package Postgres_Store
 
 import (
 	"context"
@@ -8,7 +10,7 @@ import (
 	"time"
 
 	billingtypes "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/billingTypes"
-	storepkg "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
+	store "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -25,7 +27,7 @@ func NewPostgresPricingStore(db *sql.DB) *PostgresPricingStore {
 // Strategy: It looks for a tenant-specific price first. If none found, looks for default (tenant_id IS NULL).
 // Tenant specific price means there is a row with tenant_id. tenant id IS NULL means default price for all tenants.
 
-func (store *PostgresPricingStore) GetPriceRules(ctx context.Context, usageType billingtypes.UsageType, tenantID uuid.UUID, at time.Time) (storepkg.PriceRule, error) {
+func (ps *PostgresPricingStore) GetPriceRules(ctx context.Context, usageType billingtypes.UsageType, tenantID uuid.UUID, at time.Time) (store.PriceRule, error) {
 	// 	Implementation here
 	// Query Strategy:
 	// 1. Match Usage Type
@@ -34,7 +36,7 @@ func (store *PostgresPricingStore) GetPriceRules(ctx context.Context, usageType 
 	// 4. Order by tenant_id (Specific first), then date
 
 	query := `
-    	SELECT tenant_id, unit_price_cents, currency
+		SELECT tenant_id, unit_price_cents, currency
 		FROM pricing_rules
 		WHERE usage_type = $1  
 		AND (tenant_id = $2 OR tenant_id IS NULL)
@@ -46,7 +48,8 @@ func (store *PostgresPricingStore) GetPriceRules(ctx context.Context, usageType 
 		LIMIT 1;  --limit 1 means we want only one record
 		
 		`
-	var rule storepkg.PriceRule
+	var rule store.PriceRule
+
 	// We pass `usageType` as a query parameter to filter DB rows by usage type.
 	// The SQL SELECT does not include `usage_type`, so we set it here so the
 	// returned PriceRule contains the correct UsageType.
@@ -59,7 +62,7 @@ func (store *PostgresPricingStore) GetPriceRules(ctx context.Context, usageType 
 	// - If tenant_id is present, parse it into a uuid.UUID and set rule.TenantID
 	//   to its pointer so the caller sees which tenant this rule belongs to.
 	var tenantIDStr sql.NullString // to handle NULL tenant_id
-	err := store.db.QueryRowContext(ctx, query, usageType, tenantID, at).Scan(
+	err := ps.db.QueryRowContext(ctx, query, usageType, tenantID, at).Scan(
 		&tenantIDStr,
 		&rule.UnitPriceCents,
 		&rule.Currency,
