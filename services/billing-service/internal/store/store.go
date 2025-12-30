@@ -60,13 +60,13 @@ type PricingStore interface {
 // It specifies methods for recording and retrieving ledger entries.
 
 type LedgerEntry struct {
-	EntryID         string // Unique identifier for the ledger entry for idempotency
-	TenantID        string // Tenant or Account ID associated with the ledger entry
-	TransactionType string // Type of transaction (e.g., "charge", "DEBIT", "CREDIT")
-	AmountCents     int64  // Amount in cents (positive for credits, negative for debits)
-	Currency        string // Currency code (e.g., "USD")
-	Timestamp       int64  // Unix timestamp when the transaction occurred
-	Description     string // Description or memo for the ledger entry
+	EntryID         string    // Unique identifier for the ledger entry for idempotency
+	TenantID        uuid.UUID // Tenant or Account ID associated with the ledger entry
+	TransactionType string    // Type of transaction (e.g., "charge", "DEBIT", "CREDIT")
+	AmountCents     int64     // Amount in cents (positive for credits, negative for debits)
+	Currency        string    // Currency code (e.g., "USD")
+	Timestamp       int64     // Unix timestamp when the transaction occurred
+	Description     string    // Description or memo for the ledger entry
 
 }
 
