@@ -14,6 +14,7 @@ CREATE TABLE billing_ledger (
     amount_cents BIGINT NOT NULL CHECK , -- Amount Positive = User owes us . negAtive = we owes user.. owe means we have to pay or collect
     currency VARCHAR(3) NOT NULL DEFAULT 'USD', -- Currency code (e.g., USD, EUR
     description TEXT, -- eg. 150shipment@0.10 per shipment
+    usage_type TEXT NOT NULL, -- e.g., "SHIPMENT_CREATED"
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     
     --Prevent Charges for the same reference_id for the same tenant (Idempotency at DB level

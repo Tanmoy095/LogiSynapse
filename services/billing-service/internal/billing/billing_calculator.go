@@ -7,6 +7,7 @@ import (
 	"time"
 
 	billingtypes "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/billingTypes"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/ledger"
 	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
 )
 
@@ -35,6 +36,7 @@ func NewBillingCalculator(
 
 // BillPeriod processes all usage for a specific month and generates ledger entries.
 // It is idempotent: running it multiple times for the same period is safe.
+// biliing run for a specific year and month
 func (bc *billingCalculator) BillPeriod(ctx context.Context, year int, month int) error {
 	// 1. Define the billing timestamp.
 	// We usually look up prices effective as of the FIRST day of the billing month.
@@ -64,6 +66,11 @@ func (bc *billingCalculator) BillPeriod(ctx context.Context, year int, month int
 
 }
 
+// ProcessingSingleRecord processes a single usage record:
+// - Fetches the applicable price rule
+// - Calculates total cost
+// - Creates a ledger entry
+
 func (bc *billingCalculator) ProcessingSingleRecord(
 	ctx context.Context,
 	record store.UsageRecord,
@@ -91,15 +98,16 @@ func (bc *billingCalculator) ProcessingSingleRecord(
 	//Create Deterministic Ledger Entry ID
 	// Format: "usage_TENANT_YEAR_MONTH_TYP
 	ledgerEntryID := fmt.Sprintf("usage_%s_%04d_%02d_%s", record.TenantID.String(), year, month, record.UsageType)
-	ledgerEntry := store.LedgerEntry{
+	ledgerEntry := ledger.LedgerEntry{
 		EntryID:         ledgerEntryID,
 		TenantID:        record.TenantID,
-		TransactionType: string(billingtypes.TransactionTypeDebit), // Customer owes us money..ENFORCED: It's a Debit
+		TransactionType: ledger.TransactionType(billingtypes.TransactionTypeDebit), // Customer owes us money..ENFORCED: It's a Debit
 		AmountCents:     totalCostCents,
 		Currency:        priceRule.Currency,
 		// Helpful description for the invoice UI later
 		Description: fmt.Sprintf("%s Fee: %d units @ %s %d cents/unit",
 			record.UsageType, record.TotalQuantity, priceRule.Currency, priceRule.UnitPriceCents),
+		UsageType: record.UsageType,
 	}
 	// Step 4: Persist to Ledger
 	// The store implementation handles idempotency (ON CONFLICT DO NOTHING

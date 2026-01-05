@@ -1,4 +1,6 @@
-package pricing_engine
+//services/billing-service/internal/pricing/prricing_engine.go
+
+package pricing
 
 import "errors"
 

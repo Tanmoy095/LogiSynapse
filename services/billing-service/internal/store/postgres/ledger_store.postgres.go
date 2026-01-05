@@ -7,7 +7,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	store "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/ledger"
+	"github.com/google/uuid"
 )
 
 type PostgresLedgerStore struct {
@@ -20,11 +21,11 @@ func NewPostgresLedgerStore(db *sql.DB) *PostgresLedgerStore {
 	}
 }
 
-func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry store.LedgerEntry) error {
+func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry ledger.LedgerEntry) error {
 	query := `
   INSERT INTO billing_ledger 
-  (tenant_id,  transaction_type,reference_id, amount_cents, currency, description, created_at)
-  VALUES ($1, $2, $3, $4, $5, $6, NOW())
+  (tenant_id,  transaction_type,reference_id, amount_cents, usage_type, currency, description, created_at)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
   ON CONFLICT (tenant_id, reference_id) DO NOTHING;
   
   `
@@ -34,6 +35,7 @@ func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry s
 		entry.TransactionType,
 		entry.EntryID,
 		entry.AmountCents,
+		entry.UsageType,
 		entry.Currency,
 		entry.Description,
 	)
@@ -54,4 +56,44 @@ func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry s
 	}
 
 	return nil
+}
+func (store *PostgresLedgerStore) GetLedgerEntriesForPeriod(ctx context.Context, tenantID uuid.UUID, year int, month int) ([]ledger.LedgerEntry, error) {
+	// Implementation goes here
+	query := `
+	SELECT tenant_id, transaction_type, reference_id, amount_cents, usage_type, currency, description, created_at
+	FROM billing_ledger
+	WHERE tenant_id = $1
+	AND EXTRACT(YEAR FROM created_at) = $2
+	AND EXTRACT(MONTH FROM created_at) = $3;
+	`
+	rows, err := store.db.QueryContext(ctx, query, tenantID, year, month)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query ledger entries: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []ledger.LedgerEntry
+	for rows.Next() {
+		var entry ledger.LedgerEntry
+		var createdAt sql.NullTime
+		err := rows.Scan(
+			&entry.TenantID,
+			&entry.TransactionType,
+			&entry.EntryID,
+			&entry.AmountCents,
+			&entry.Currency,
+			&entry.Description,
+			&createdAt,
+			&entry.UsageType,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan ledger entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over ledger entries: %w", err)
+	}
+
+	return entries, nil
 }

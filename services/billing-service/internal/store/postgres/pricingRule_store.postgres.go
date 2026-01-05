@@ -10,7 +10,7 @@ import (
 	"time"
 
 	billingtypes "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/billingTypes"
-	store "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/pricing"
 	"github.com/google/uuid"
 )
 
@@ -27,7 +27,7 @@ func NewPostgresPricingStore(db *sql.DB) *PostgresPricingStore {
 // Strategy: It looks for a tenant-specific price first. If none found, looks for default (tenant_id IS NULL).
 // Tenant specific price means there is a row with tenant_id. tenant id IS NULL means default price for all tenants.
 
-func (ps *PostgresPricingStore) GetPriceRules(ctx context.Context, usageType billingtypes.UsageType, tenantID uuid.UUID, at time.Time) (store.PriceRule, error) {
+func (ps *PostgresPricingStore) GetPriceRules(ctx context.Context, usageType billingtypes.UsageType, tenantID uuid.UUID, at time.Time) (pricing.PriceRule, error) {
 	// 	Implementation here
 	// Query Strategy:
 	// 1. Match Usage Type
@@ -48,7 +48,7 @@ func (ps *PostgresPricingStore) GetPriceRules(ctx context.Context, usageType bil
 		LIMIT 1;  --limit 1 means we want only one record
 		
 		`
-	var rule store.PriceRule
+	var rule pricing.PriceRule
 
 	// We pass `usageType` as a query parameter to filter DB rows by usage type.
 	// The SQL SELECT does not include `usage_type`, so we set it here so the

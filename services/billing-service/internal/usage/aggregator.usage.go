@@ -1,5 +1,3 @@
-//services/billing-service/internal/usage/aggregator.go
-
 package usage
 
 import (

@@ -1,5 +1,3 @@
-//services/billing-service/internal/usage/bucket.go
-
 package usage
 
 import (

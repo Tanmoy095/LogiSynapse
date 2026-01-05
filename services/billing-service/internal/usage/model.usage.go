@@ -1,5 +1,3 @@
-//services/billing-service/internal/usage/model.usage.go
-
 package usage
 
 import (
