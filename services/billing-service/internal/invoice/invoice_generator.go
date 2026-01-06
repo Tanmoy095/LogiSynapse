@@ -1,6 +1,9 @@
+// services/billing-service/internal/invoice/invoice_generator.go
+
 package invoice
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -37,7 +40,7 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(tenantID uuid.UUID, year in
 
 	// 1. Check if invoice exists
 
-	existingInvoice, err := ig.InvoiceStore.GetInvoice(tenantID, year, month)
+	existingInvoice, err := ig.InvoiceStore.GetInvoice(ctx, tenantID, year, month)
 	if err == nil && existingInvoice != nil { // err== nil means invoice exists . invoice!= nil means invoice found
 		if existingInvoice.Status != InvoiceDraft { // Not Draft
 			// Rule: Immutable History for Finalized/Paid/Voided
@@ -55,7 +58,8 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(tenantID uuid.UUID, year in
 
 	}
 	// 2. Fetch Source of Truth (The Ledger)
-	entries, err := ig.LedgerStore.GetLedgerEntriesForPeriod(tenantID, year, month)
+	ctx := context.Background()
+	entries, err := ig.LedgerStore.GetEntriesForPeriod(ctx, tenantID, year, month)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch ledger entries: %w", err)
 	}
@@ -71,9 +75,9 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(tenantID uuid.UUID, year in
 		// DEBITS (Charges) for the invoice total and Credit subtraction We owe them (Negative)
 		// Calculate the net impact of this entry
 		var amount int64
-		if entry.TransactionType == string(billingtypes.TransactionTypeDebit) {
+		if entry.TransactionType == "DEBIT" {
 			amount = entry.AmountCents // Debits add to invoice total .// We charge them (Positive)
-		} else if entry.TransactionType == string(billingtypes.TransactionTypeCredit) {
+		} else if entry.TransactionType == "CREDIT" {
 			amount = -entry.AmountCents // Credits reduce the invoice total ..// We owe them (Negative)
 		} else {
 			continue // Unknown type, skip
@@ -123,6 +127,7 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(tenantID uuid.UUID, year in
 		CreatedAt:  time.Now(),
 	}
 	// 6. Persist Atomically (Header + Lines)
+	ctx := context.Background()
 	if err := ig.InvoiceStore.CreateInvoice(ctx, invoice); err != nil {
 		return nil, fmt.Errorf("failed to save invoice: %w", err)
 	}
