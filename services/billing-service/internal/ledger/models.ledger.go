@@ -30,4 +30,6 @@ type LedgerEntry struct {
 	Currency  string    // Currency code (e.g., "USD")
 	CreatedAt time.Time // Timestamp of when the entry was created
 	UsageType billingtypes.UsageType
+	Quantity  int64 // e.g., number of shipments
+	UnitPrice int64 // e.g., price per shipment in cents
 }

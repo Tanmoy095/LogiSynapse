@@ -71,7 +71,19 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(ctx context.Context, tenant
 	// We use a map where Key = "SHIPMENT_CREATED" and Value = Pointer to Line
 	lineMap := make(map[billingtypes.UsageType]*InvoiceLine)
 	var invoiceTotal int64
+	// ✅ CURRENCY GUARD
+	// We expect the first entry to dictate the currency.
+	// In a multi-currency system, you'd group by currency, but here we enforce consistency.
+	expectedCurrency := "USD"
+	if len(entries) > 0 {
+		expectedCurrency = entries[0].Currency
+	}
 	for _, entry := range entries {
+		// 1. Currency Check
+		if entry.Currency != expectedCurrency {
+			// TODO: Handle multi-currency gracefully. For now, fail safe.
+			return nil, fmt.Errorf("currency mismatch in ledger: found %s expected %s", entry.Currency, expectedCurrency)
+		}
 		// DEBITS (Charges) for the invoice total and Credit subtraction We owe them (Negative)
 		// Calculate the net impact of this entry
 		var amount int64
@@ -92,6 +104,17 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(ctx context.Context, tenant
 		if line, exists := lineMap[entry.UsageType]; exists {
 			// line exists, add amount just update amount
 			line.LineTotalCents += amount
+			// ✅ Sum Quantity for the line
+			line.Quantity += entry.Quantity
+
+			// Note: UnitPrice should ideally be consistent per usage type.
+			// If prices changed mid-month, this simple grouping might show an "Average" or last price.
+			// For Phase 3.1, keeping the first UnitPrice is acceptable, or we set to 0 if they differ.
+			if line.UnitPriceCents != entry.UnitPrice {
+				// Complex case: Mixed prices for same usage type (e.g. tiered pricing).
+				// Solution: Set UnitPrice to 0 to indicate "Variable Rate" on invoice
+				line.UnitPriceCents = 0
+			}
 		} else {
 			// New line : create and add to map
 			lineMap[entry.UsageType] = &InvoiceLine{
@@ -99,7 +122,8 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(ctx context.Context, tenant
 				UsageType:      entry.UsageType,
 				Description:    fmt.Sprintf("%s Charges", entry.UsageType), // Generic description
 				LineTotalCents: amount,
-				Quantity:       0, // Ledger doesn't strictly store Qty, only Money. So we leave it 0 or could infer if needed.
+				Quantity:       entry.Quantity,  // Initial quantity
+				UnitPriceCents: entry.UnitPrice, // Initial unit price
 
 			}
 		}

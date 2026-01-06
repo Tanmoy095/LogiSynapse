@@ -103,7 +103,7 @@ func TestBillingCalculator_HappyPath(t *testing.T) {
 	if entry.AmountCents != expectedAmount {
 		t.Errorf("Wrong amount: expected %d, got %d", expectedAmount, entry.AmountCents)
 	}
-	if entry.TransactionType != ledger.Debit {
+	if entry.TransactionType != billingtypes.TransactionTypeDebit {
 		t.Errorf("Wrong type: expected DEBIT, got %s", entry.TransactionType)
 	}
 	// Check Idempotency Key construction

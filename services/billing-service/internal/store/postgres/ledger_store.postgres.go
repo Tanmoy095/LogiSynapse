@@ -24,8 +24,8 @@ func NewPostgresLedgerStore(db *sql.DB) *PostgresLedgerStore {
 func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry ledger.LedgerEntry) error {
 	query := `
   INSERT INTO billing_ledger 
-  (tenant_id,  transaction_type,reference_id, amount_cents, usage_type, currency, description, created_at)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+  (tenant_id,  transaction_type,reference_id, amount_cents, usage_type, currency, description,quantity,unit_price_cents, created_at)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
   ON CONFLICT (tenant_id, reference_id) DO NOTHING;
   
   `
@@ -38,6 +38,8 @@ func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry l
 		entry.UsageType,
 		entry.Currency,
 		entry.Description,
+		entry.Quantity,
+		entry.UnitPrice,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert ledger entry: %w", err)
@@ -60,7 +62,7 @@ func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry l
 func (store *PostgresLedgerStore) GetLedgerEntriesForPeriod(ctx context.Context, tenantID uuid.UUID, year int, month int) ([]ledger.LedgerEntry, error) {
 	// Implementation goes here
 	query := `
-	SELECT tenant_id, transaction_type, reference_id, amount_cents, usage_type, currency, description, created_at
+	SELECT tenant_id, transaction_type, reference_id, amount_cents, usage_type, currency, description,quantity,unit_price_cents, created_at
 	FROM billing_ledger
 	WHERE tenant_id = $1
 	AND EXTRACT(YEAR FROM created_at) = $2
@@ -83,6 +85,8 @@ func (store *PostgresLedgerStore) GetLedgerEntriesForPeriod(ctx context.Context,
 			&entry.AmountCents,
 			&entry.Currency,
 			&entry.Description,
+			&entry.Quantity,
+			&entry.UnitPrice,
 			&createdAt,
 			&entry.UsageType,
 		)

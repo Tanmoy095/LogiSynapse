@@ -101,8 +101,10 @@ func (bc *billingCalculator) ProcessingSingleRecord(
 	ledgerEntry := ledger.LedgerEntry{
 		EntryID:         ledgerEntryID,
 		TenantID:        record.TenantID,
-		TransactionType: ledger.TransactionType(billingtypes.TransactionTypeDebit), // Customer owes us money..ENFORCED: It's a Debit
+		TransactionType: billingtypes.TransactionType(record.UsageType), // Customer owes us money..ENFORCED: It's a Debit
 		AmountCents:     totalCostCents,
+		Quantity:        record.TotalQuantity,
+		UnitPrice:       priceRule.UnitPriceCents,
 		Currency:        priceRule.Currency,
 		// Helpful description for the invoice UI later
 		Description: fmt.Sprintf("%s Fee: %d units @ %s %d cents/unit",
