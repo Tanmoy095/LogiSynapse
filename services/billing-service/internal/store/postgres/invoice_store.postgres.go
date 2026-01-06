@@ -1,4 +1,6 @@
-package Postgres_Store
+//services/billing-service/internal/store/postgres/invoice_store.postgres.go
+
+package PostgresStore
 
 import (
 	"context"
@@ -23,7 +25,7 @@ func NewPostgresInvoiceStore(db *sql.DB) *PostgresInvoiceStore {
 // CreateInvoice inserts a new invoice into the store.
 // GetInvoice retrieves an invoice by tenant ID, year, and month.
 // UpdateInvoice updates an existing invoice in the store.
-func (store *PostgresInvoiceStore) CreateInvoice(ctx context.Context, inv invoice.Invoice) error {
+func (store *PostgresInvoiceStore) CreateInvoice(ctx context.Context, inv *invoice.Invoice) error {
 	//Begin a transaction.
 	tx, err := store.db.BeginTx(ctx, nil) //store.db.BeginTx starts a new transaction with the provided context. means any operation within this transaction can be cancelled or timed out based on the context.
 	if err != nil {
@@ -57,7 +59,7 @@ func (store *PostgresInvoiceStore) CreateInvoice(ctx context.Context, inv invoic
 	}
 	//Insert Lines
 	lineQuery := `
-		INSERT INTO invoice_lines (line_id, invoice_id, usage_type, quantity, unit_price_cents, line_total_cents, description)
+		INSERT INTO invoice_lines (id, invoice_id, usage_type, quantity, unit_price_cents, line_total_cents, description)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	// We use the prepared statement for efficiency in loops
 	stmt, err := tx.PrepareContext(ctx, lineQuery)
@@ -89,7 +91,7 @@ func (store *PostgresInvoiceStore) CreateInvoice(ctx context.Context, inv invoic
 }
 
 // GetInvoice fetches the header AND the lines, reassembling them into the struct
-func (store *PostgresInvoiceStore) GetInvoice(ctx context.Context, tenantID string, year int, month int) (*invoice.Invoice, error) {
+func (store *PostgresInvoiceStore) GetInvoice(ctx context.Context, tenantID uuid.UUID, year int, month int) (*invoice.Invoice, error) {
 	// Fetch Invoice Header
 	headerQuery := `
 		SELECT invoice_id, tenant_id, billing_year, billing_month, total_amount_cents, currency, status, created_at,finalized_at, paid_at
@@ -151,12 +153,20 @@ func (store *PostgresInvoiceStore) GetInvoice(ctx context.Context, tenantID stri
 	return &inv, nil
 }
 
+// DeleteInvoice allows us to clear a DRAFT so we can regenerate it cleanly
+func (s *PostgresInvoiceStore) DeleteInvoice(ctx context.Context, invoiceID uuid.UUID) error {
+	// ON DELETE CASCADE in SQL should handle the lines, but safe to be explicit or rely on FK
+	query := `DELETE FROM invoices WHERE invoice_id = $1`
+	_, err := s.db.ExecContext(ctx, query, invoiceID)
+	return err
+}
+
 // UpdateStatus changes the status (e.g., DRAFT -> FINALIZED)
 func (s *PostgresInvoiceStore) UpdateStatus(ctx context.Context, invoiceID uuid.UUID, status invoice.InvoiceStatus) error {
 	query := `
 		UPDATE invoices 
 		SET status = $1, finalized_at = CASE WHEN $1 = 'FINALIZED' THEN NOW() ELSE finalized_at END
-		WHERE id = $2
+		WHERE invoice_id = $2
 	`
 	_, err := s.db.ExecContext(ctx, query, status, invoiceID)
 	if err != nil {

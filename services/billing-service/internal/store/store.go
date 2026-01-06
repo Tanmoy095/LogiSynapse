@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// UsageStore persists aggregated usage durably
 // UsageRecord represents aggregated usage for a billing period
 type UsageRecord struct {
 	TenantID      uuid.UUID
@@ -28,7 +29,6 @@ type FlushBatch struct {
 	Records []UsageRecord
 }
 
-// UsageStore persists aggregated usage durably
 type UsageStore interface {
 	// Flush atomically persists a batch.
 	// Must be idempotent by BatchID.
@@ -54,3 +54,5 @@ type LedgerStore interface {
 	CreateLedgerEntry(ctx context.Context, entry ledger.LedgerEntry) error
 	GetEntriesForPeriod(ctx context.Context, tenantID uuid.UUID, year int, month int) ([]ledger.LedgerEntry, error)
 }
+
+// InvoiceStore interface has been moved to the invoice package to avoid an import cycle.

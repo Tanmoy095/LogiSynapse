@@ -14,6 +14,8 @@ import (
 	"time"
 
 	billingtypes "github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/billingTypes"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/ledger"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/pricing"
 	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/store"
 	"github.com/google/uuid"
 )
@@ -30,20 +32,20 @@ func (m *MockUsageStore) GetUsageForPeriod(ctx context.Context, year, month int)
 }
 
 type MockPricingStore struct {
-	Rule store.PriceRule
+	Rule pricing.PriceRule
 	Err  error
 }
 
-func (m *MockPricingStore) GetPriceRules(ctx context.Context, u billingtypes.UsageType, t uuid.UUID, at time.Time) (store.PriceRule, error) {
+func (m *MockPricingStore) GetPriceRules(ctx context.Context, u billingtypes.UsageType, t uuid.UUID, at time.Time) (pricing.PriceRule, error) {
 	return m.Rule, m.Err
 }
 
 type MockLedgerStore struct {
-	Entries []store.LedgerEntry
+	Entries []ledger.LedgerEntry
 	// We simulate idempotency: if EntryID exists, we don't duplicate
 }
 
-func (m *MockLedgerStore) CreateLedgerEntry(ctx context.Context, entry store.LedgerEntry) error {
+func (m *MockLedgerStore) CreateLedgerEntry(ctx context.Context, entry ledger.LedgerEntry) error {
 	for _, e := range m.Entries {
 		if e.EntryID == entry.EntryID {
 			// Idempotency: Simulate "ON CONFLICT DO NOTHING" -> Success (nil error)
@@ -52,6 +54,11 @@ func (m *MockLedgerStore) CreateLedgerEntry(ctx context.Context, entry store.Led
 	}
 	m.Entries = append(m.Entries, entry)
 	return nil
+}
+
+func (m *MockLedgerStore) GetEntriesForPeriod(ctx context.Context, tenantID uuid.UUID, year, month int) ([]ledger.LedgerEntry, error) {
+	// For tests we return all stored entries; filter by tenant/year/month if needed in future.
+	return m.Entries, nil
 }
 
 // --- TESTS ---
@@ -70,7 +77,7 @@ func TestBillingCalculator_HappyPath(t *testing.T) {
 		},
 	}
 	pricingRepo := &MockPricingStore{
-		Rule: store.PriceRule{
+		Rule: pricing.PriceRule{
 			UnitPriceCents: 50, // $0.50
 			Currency:       "USD",
 		},
@@ -96,7 +103,7 @@ func TestBillingCalculator_HappyPath(t *testing.T) {
 	if entry.AmountCents != expectedAmount {
 		t.Errorf("Wrong amount: expected %d, got %d", expectedAmount, entry.AmountCents)
 	}
-	if entry.TransactionType != string(billingtypes.TransactionTypeDebit) {
+	if entry.TransactionType != ledger.Debit {
 		t.Errorf("Wrong type: expected DEBIT, got %s", entry.TransactionType)
 	}
 	// Check Idempotency Key construction
@@ -114,7 +121,7 @@ func TestBillingCalculator_Idempotency(t *testing.T) {
 			{TenantID: tenantID, UsageType: billingtypes.APIRequest, TotalQuantity: 100, BillingPeriod: store.BillingPeriod{2024, 6}},
 		},
 	}
-	pricingRepo := &MockPricingStore{Rule: store.PriceRule{UnitPriceCents: 1, Currency: "USD"}}
+	pricingRepo := &MockPricingStore{Rule: pricing.PriceRule{UnitPriceCents: 1, Currency: "USD"}}
 	ledgerRepo := &MockLedgerStore{} // Starts empty
 
 	calc := NewBillingCalculator(usageRepo, pricingRepo, ledgerRepo)

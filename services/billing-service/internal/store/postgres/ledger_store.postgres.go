@@ -1,6 +1,6 @@
 // services/billing-service/internal/store/postgres/ledger_store.postgres.go
 
-package Postgres_Store
+package PostgresStore
 
 import (
 	"context"

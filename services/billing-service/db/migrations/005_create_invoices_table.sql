@@ -1,3 +1,5 @@
+--services/billing-service/db/migrations/005_create_invoices_table.sql
+
 -- 1. Invoices Header
 CREATE TABLE IF NOT EXISTS invoices(
     invoice_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -25,14 +27,14 @@ CREATE TABLE IF NOT EXISTS invoices(
 -- 2. Invoices Lines (The Detail)
 
 CREATE TABLE IF NOT EXISTS invoice_lines (
-    line_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_id UUID NOT NULL REFERENCES invoices(invoice_id) ON DELETE CASCADE, -- Foreign Key to Invoices Table.. on delete cascade means if invoice is deleted, its lines are too
     usage_type TEXT NOT NULL,
     quantity BIGINT NOT NULL ,
     unit_price_cents BIGINT NOT NULL CHECK (unit_price_cents >= 0),
-    line_total_cents BIGINT NOT NULL CHECK (line_total_cents >= 0)
-    description TEXT NOT NULL,
-)
+    line_total_cents BIGINT NOT NULL CHECK (line_total_cents >= 0),
+    description TEXT NOT NULL
+);
 -- Index for fast retrieval of lines by invoice
 CREATE INDEX IF NOT EXISTS idx_invoices_tenant_period  --index name explains its purpose
 ON invoices (tenant_id, billing_year, billing_month); --means we can quickly find invoices for a tenant in a specific month/year

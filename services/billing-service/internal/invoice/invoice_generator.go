@@ -21,12 +21,12 @@ type InvoiceGenerator struct {
 	// Dependencies would go here (e.g., stores, calculators)
 	//for invoice generation we need ledger store and usage store
 	LedgerStore  store.LedgerStore
-	InvoiceStore store.InvoiceStore
+	InvoiceStore InvoiceStore
 }
 
 func NewInvoiceGenerator(
 	ledgerStore store.LedgerStore,
-	invoiceStore store.InvoiceStore,
+	invoiceStore InvoiceStore,
 ) *InvoiceGenerator {
 	return &InvoiceGenerator{
 		LedgerStore:  ledgerStore,
@@ -36,35 +36,35 @@ func NewInvoiceGenerator(
 
 // GenerateInvoiceForTenant aggregates ledger entries into a formal invoice ...
 
-func (ig *InvoiceGenerator) GenerateInvoiceForTenant(tenantID uuid.UUID, year int, month int) (*Invoice, error) {
+func (ig *InvoiceGenerator) GenerateInvoiceForTenant(ctx context.Context, tenantID uuid.UUID, year int, month int) (*Invoice, error) {
 
-	// 1. Check if invoice exists
-
+	// 1. Check for existing invoice
 	existingInvoice, err := ig.InvoiceStore.GetInvoice(ctx, tenantID, year, month)
-	if err == nil && existingInvoice != nil { // err== nil means invoice exists . invoice!= nil means invoice found
-		if existingInvoice.Status != InvoiceDraft { // Not Draft
-			// Rule: Immutable History for Finalized/Paid/Voided
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing invoice: %w", err)
+	}
+
+	if existingInvoice != nil {
+		// Rule: Immutable History
+		if existingInvoice.Status != InvoiceDraft {
 			return nil, ErrInvoiceAlreadyFinalized
 		}
 
-		// If Draft, we  delete and regenerate, or return existing.
-		// we will delete existing draft and regenerate lines and re-run
-
-		err = ig.InvoiceStore.DeleteInvoice(existingInvoice.ID)
-		if err != nil {
-			return nil, err
+		// Rule: If Draft exists, delete it completely and regenerate.
+		// This is cleaner than trying to "update" lines.
+		if err := ig.InvoiceStore.DeleteInvoice(ctx, existingInvoice.InvoiceID); err != nil {
+			return nil, fmt.Errorf("failed to delete old draft: %w", err)
 		}
-		//regenerate below
-
 	}
 	// 2. Fetch Source of Truth (The Ledger)
-	ctx := context.Background()
 	entries, err := ig.LedgerStore.GetEntriesForPeriod(ctx, tenantID, year, month)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch ledger entries: %w", err)
 	}
+	//If no activity we might still want to generate a $0 invoice or return nil
+	//for now lets return nil (no invoice needed )
 	if len(entries) == 0 {
-		return nil, errors.New("no ledger entries found for period")
+		return nil, nil
 	}
 
 	// 3. LOGIC: Group Ledger Entries by Usage Type
@@ -75,9 +75,9 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(tenantID uuid.UUID, year in
 		// DEBITS (Charges) for the invoice total and Credit subtraction We owe them (Negative)
 		// Calculate the net impact of this entry
 		var amount int64
-		if entry.TransactionType == "DEBIT" {
+		if entry.TransactionType == billingtypes.TransactionTypeDebit {
 			amount = entry.AmountCents // Debits add to invoice total .// We charge them (Positive)
-		} else if entry.TransactionType == "CREDIT" {
+		} else if entry.TransactionType == billingtypes.TransactionTypeCredit {
 			amount = -entry.AmountCents // Credits reduce the invoice total ..// We owe them (Negative)
 		} else {
 			continue // Unknown type, skip
@@ -87,20 +87,19 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(tenantID uuid.UUID, year in
 		invoiceTotal += amount // Aggregate to invoice total
 		// GROUPING STRATEGY:
 		// We use the UsageType as the grouping key.
-		// If we already have a line for "Shipment Charges", we just add to its total.
+		// If we already have a line for e.g"Shipment Created", we just add to its total.
 		// If not, we create a new line.
-		key := entry.UsageType // Simplified mapping means we assume TransactionType == UsageType
-		if line, exists := lineMap[billingtypes.UsageType(key)]; exists {
+		if line, exists := lineMap[entry.UsageType]; exists {
 			// line exists, add amount just update amount
 			line.LineTotalCents += amount
 		} else {
 			// New line : create and add to map
-			lineMap[billingtypes.UsageType(key)] = &InvoiceLine{
+			lineMap[entry.UsageType] = &InvoiceLine{
 				ID:             uuid.New(),
-				UsageType:      billingtypes.UsageType(key),
-				Description:    entry.Description,
+				UsageType:      entry.UsageType,
+				Description:    fmt.Sprintf("%s Charges", entry.UsageType), // Generic description
 				LineTotalCents: amount,
-				Quantity:       0, // Quantity is not tracked in ledger entries directly
+				Quantity:       0, // Ledger doesn't strictly store Qty, only Money. So we leave it 0 or could infer if needed.
 
 			}
 		}
@@ -121,13 +120,12 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(tenantID uuid.UUID, year in
 		Year:       year,
 		Month:      month,
 		TotalCents: invoiceTotal,
-		Currency:   "USD",
+		Currency:   "USD", // Ideally, currency should be consistent per tenant or derived from ledger entries
 		Lines:      finalLines,
 		Status:     InvoiceDraft, // Start as Draft
 		CreatedAt:  time.Now(),
 	}
 	// 6. Persist Atomically (Header + Lines)
-	ctx := context.Background()
 	if err := ig.InvoiceStore.CreateInvoice(ctx, invoice); err != nil {
 		return nil, fmt.Errorf("failed to save invoice: %w", err)
 	}

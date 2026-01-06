@@ -1,3 +1,5 @@
+// services/billing-service/internal/invoice/invoice_models.go
+
 package invoice
 
 import (
