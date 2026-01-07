@@ -15,6 +15,8 @@ import (
 
 var (
 	ErrInvoiceAlreadyFinalized = errors.New("cannot regenerate a finalized invoice")
+	// ErrCurrencyMismatch indicates ledger entries use mixed currencies for the period
+	ErrCurrencyMismatch = errors.New("currency mismatch in ledger")
 )
 
 type InvoiceGenerator struct {
@@ -81,8 +83,8 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(ctx context.Context, tenant
 	for _, entry := range entries {
 		// 1. Currency Check
 		if entry.Currency != expectedCurrency {
-			// TODO: Handle multi-currency gracefully. For now, fail safe.
-			return nil, fmt.Errorf("currency mismatch in ledger: found %s expected %s", entry.Currency, expectedCurrency)
+			// Fail safe: use a sentinel error and wrap details
+			return nil, fmt.Errorf("%w: found %s expected %s", ErrCurrencyMismatch, entry.Currency, expectedCurrency)
 		}
 		// DEBITS (Charges) for the invoice total and Credit subtraction We owe them (Negative)
 		// Calculate the net impact of this entry
@@ -144,7 +146,7 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(ctx context.Context, tenant
 		Year:       year,
 		Month:      month,
 		TotalCents: invoiceTotal,
-		Currency:   "USD", // Ideally, currency should be consistent per tenant or derived from ledger entries
+		Currency:   expectedCurrency, // Derived from ledger entries
 		Lines:      finalLines,
 		Status:     InvoiceDraft, // Start as Draft
 		CreatedAt:  time.Now(),

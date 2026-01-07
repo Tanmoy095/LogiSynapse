@@ -12,6 +12,8 @@ CREATE TABLE billing_ledger (
 
     --THE Financials
     amount_cents BIGINT NOT NULL CHECK , -- Amount Positive = User owes us . negAtive = we owes user.. owe means we have to pay or collect
+    quantity BIGINT NOT NULL DEFAULT 1, -- e.g., number of shipments
+    unit_price_cents BIGINT NOT NULL DEFAULT 0, -- e.g., price per shipment in cents
     currency VARCHAR(3) NOT NULL DEFAULT 'USD', -- Currency code (e.g., USD, EUR
     description TEXT, -- eg. 150shipment@0.10 per shipment
     usage_type TEXT NOT NULL, -- e.g., "SHIPMENT_CREATED"
