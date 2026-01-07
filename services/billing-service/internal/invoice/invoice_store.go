@@ -15,4 +15,9 @@ type InvoiceStore interface {
 	GetInvoice(ctx context.Context, tenantID uuid.UUID, year int, month int) (*Invoice, error)
 	DeleteInvoice(ctx context.Context, invoiceID uuid.UUID) error
 	UpdateStatus(ctx context.Context, invoiceID uuid.UUID, status InvoiceStatus) error
+	// GetInvoiceByID fetches a specific invoice by its UUID (not just by tenant/period)
+	GetInvoiceByID(ctx context.Context, invoiceID uuid.UUID) (*Invoice, error)
+	// FinalizeInvoice performs the state transition from DRAFT -> FINALIZED.
+	// It must enforce the condition: WHERE status = 'DRAFT'.
+	FinalizeInvoice(ctx context.Context, invoiceID uuid.UUID) error
 }

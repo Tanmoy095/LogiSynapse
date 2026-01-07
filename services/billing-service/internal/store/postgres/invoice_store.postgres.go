@@ -174,3 +174,84 @@ func (s *PostgresInvoiceStore) UpdateStatus(ctx context.Context, invoiceID uuid.
 	}
 	return nil
 }
+
+func (s *PostgresInvoiceStore) GetInvoiceByID(ctx context.Context, invoiceID uuid.UUID) (*invoice.Invoice, error) {
+	//Fetch Invoice by its UUID
+	query := ` SELECT invoice_id, tenant_id, billing_year, billing_month, total_amount_cents, currency, status, created_at,finalized_at, paid_at
+	FROM invoices
+	WHERE invoice_id = $1
+	`
+	var inv invoice.Invoice
+	// We use sql.NullTime for nullable timestamps
+	var finalizedAt, paidAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, query, invoiceID).Scan(
+		&inv.InvoiceID,
+		&inv.TenantID,
+		&inv.Year,
+		&inv.Month,
+		&inv.TotalCents,
+		&inv.Currency,
+		&inv.Status,
+		&inv.CreatedAt,
+		&finalizedAt,
+		&paidAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // Not found is not an error here, just nil
+		}
+		return nil, fmt.Errorf("failed to fetch invoice by ID: %w", err)
+	}
+	// 2. Fetch Lines (Reusing existing logic logic is fine, or simple query)
+	// For finalization validation, we specifically need to know if lines exist.
+	lineQuery := `SELECT count(*) FROM invoice_lines WHERE invoice_id = $1`
+	var lineCount int
+	if err := s.db.QueryRowContext(ctx, lineQuery, inv.InvoiceID).Scan(&lineCount); err != nil {
+		return nil, fmt.Errorf("db count lines failed: %w", err)
+	}
+	if lineCount == 0 {
+		return nil, fmt.Errorf("invoice %s has no lines", invoiceID)
+	}
+	//We verify line count in the Service layer, but fetching the actual lines is optional
+	// (If you need full lines, copy the fetching logic from GetInvoice).
+
+	return &inv, nil
+
+}
+
+func (s *PostgresInvoiceStore) FinalizeInvoice(ctx context.Context, invoiceID uuid.UUID) error {
+	// we only allow finalization if the invoice is currently in DRAFT status
+	// This prevents "Double Finalization" at the DB level.
+
+	query := `
+		UPDATE invoices 
+		SET status = 'FINALIZED', finalized_at = NOW()
+		WHERE invoice_id = $1 AND status = 'DRAFT'
+	`
+	res, err := s.db.ExecContext(ctx, query, invoiceID)
+	if err != nil {
+		return fmt.Errorf("failed to finalize invoice: %w", err)
+	}
+	rows, err := res.RowsAffected() // this ensure that only one row was updated
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected during finalization: %w", err)
+	}
+	if rows == 0 {
+		// If 0 rows updated, it means either:
+		// 1. Invoice doesn't exist
+		// 2. Invoice exists but is NOT in DRAFT state
+		// We check existence to return the right error.
+		existsQuery := `SELECT status FROM invoices WHERE invoice_id = $1`
+		var status string
+		if err := s.db.QueryRowContext(ctx, existsQuery, invoiceID).Scan(&status); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return invoice.ErrInvoiceNotFound
+			}
+			return err
+		}
+
+		// If we are here, it exists but wasn't DRAFT
+		return invoice.ErrInvoiceNotDraft
+	}
+	return nil
+}

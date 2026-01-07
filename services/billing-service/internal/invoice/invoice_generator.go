@@ -14,7 +14,6 @@ import (
 )
 
 var (
-	ErrInvoiceAlreadyFinalized = errors.New("cannot regenerate a finalized invoice")
 	// ErrCurrencyMismatch indicates ledger entries use mixed currencies for the period
 	ErrCurrencyMismatch = errors.New("currency mismatch in ledger")
 )
