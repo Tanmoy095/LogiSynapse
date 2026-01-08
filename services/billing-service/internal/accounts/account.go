@@ -1,7 +1,11 @@
 // services/billing-service/internal/accounts/account.go
 package accounts
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // PlanType represents the subscription plan type for a billing account
 type PlanType string
@@ -12,13 +16,16 @@ const (
 	EnterprisePlan PlanType = "ENTERPRISE"
 )
 
-//Account represents a billing entity for a User/Tanant/Organization
+//Account represents a billing entity for a User/Tenant/Organization
 
 type Account struct {
-	ID              uuid.UUID // Unique identifier for the billing account
-	Email           string    // Contact email for billing communications forr notification or invoices
-	CurrentPlan     PlanType  // Current subscription plan of the account}
-	PaymentMethodID string    // Reference to the payment method on file (e.g., Stripe Payment Method ID)
+	ID               uuid.UUID // Unique identifier for the billing account
+	Email            string    // Contact email for billing communications for notification or invoices
+	StripeCustomerID string    // Reference to the customer in the payment gateway (e.g., Stripe Customer ID)
+	PaymentMethodID  string    // Reference to the payment method on file (e.g., Stripe Payment Method ID)
+	CurrentPlan      PlanType  // Current subscription plan of the account}
+	CreateAt         time.Time // Timestamp when the account was created
+	UpdateAt         time.Time // Timestamp when the account was last updated
 }
 
 //SubscriptionStatus tracks the status of subscriptions
@@ -32,6 +39,7 @@ const (
 )
 
 // Subscription represents a billing subscription for an account
+//StripeCustomerID e.g cus_123 THis represents the user and it holds the history of all their payments
 
 //zone 1:for the first  10 miles the price is $1 per mile
 //zone 2:for any distance after 10 miles the price is $0.75 per mile
