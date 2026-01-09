@@ -5,7 +5,6 @@ package graph
 import (
 	"bytes"
 	"context"
-	"embed"
 	"errors"
 	"fmt"
 	"strconv"
@@ -221,15 +220,61 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 	return introspection.WrapTypeFromDef(ec.Schema(), ec.Schema().Types[name]), nil
 }
 
-//go:embed "schema/schema.graphqls"
-var sourcesFS embed.FS
+const embeddedSchema = `# graph/schema/schema.graphqls
+type Shipment {
+  id: ID!
+  status: ShipmentStatus!
+  origin: String!
+  destination: String!
+  eta: String!
+  carrier: Carrier!
+}
+#ENUM........
+enum ShipmentStatus {
+  IN_TRANSIT
+  DELIVERED
+  PENDING
+}
+
+type Carrier {
+  name: String!
+  trackingUrl: String!
+}
+
+type Query {
+  shipments(
+    origin: String
+    status: ShipmentStatus
+    destination: String
+    limit: Int = 10
+    offset: Int = 0
+  ): [Shipment!]!
+  health: String!
+}
+
+input NewShipmentInput {
+  status: ShipmentStatus!
+  origin: String!
+  destination: String!
+  eta: String!
+  carrier: CarrierInput!
+}
+
+input CarrierInput {
+  name: String!
+  trackingUrl: String!
+}
+
+type Mutation {
+  createShipment(input: NewShipmentInput!): Shipment!
+}
+`
 
 func sourceData(filename string) string {
-	data, err := sourcesFS.ReadFile(filename)
-	if err != nil {
-		panic(fmt.Sprintf("codegen problem: %s not available", filename))
+	if filename == "schema/schema.graphqls" {
+		return embeddedSchema
 	}
-	return string(data)
+	panic(fmt.Sprintf("codegen problem: %s not available", filename))
 }
 
 var sources = []*ast.Source{

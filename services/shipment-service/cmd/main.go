@@ -4,13 +4,14 @@ package main
 import (
 	"log"
 	"net"
+	"os"
 
 	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/config"
 	grpcServer "github.com/Tanmoy095/LogiSynapse/services/shipment-service/handler/grpc"
 	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/service"
 	"github.com/Tanmoy095/LogiSynapse/services/shipment-service/store"
-	pkgkafka "github.com/Tanmoy095/LogiSynapse/shared/kafka"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
+	"go.temporal.io/sdk/client"
 	"google.golang.org/grpc"
 )
 
@@ -30,16 +31,23 @@ func main() {
 	// Ensure the store's database connection is closed when the program exits
 	defer store.Close()
 
-	// Initialize Kafka producer if configuration present
-	var producer pkgkafka.Publisher
-	if cfg.KAFKA_BROKER != "" && cfg.KAFKA_TOPIC != "" {
-		producer = pkgkafka.NewKafkaProducer(cfg.KAFKA_BROKER, cfg.KAFKA_TOPIC)
-		defer producer.Close()
+	// Initialize Temporal client
+	temporalHost := os.Getenv("TEMPORAL_HOST_PORT")
+	if temporalHost == "" {
+		temporalHost = "temporal:7233" // Default for Docker environment
 	}
 
-	// Initialize the ShipmentService, which contains the business logic
-	// It uses the PostgresStore to interact with the database
-	svc := service.NewShipmentService(store, producer)
+	temporalClient, err := client.Dial(client.Options{
+		HostPort: temporalHost,
+	})
+	if err != nil {
+		log.Fatalf("failed to create Temporal client: %v", err)
+	}
+	defer temporalClient.Close()
+
+	// Initialize the ShipmentService with Temporal client
+	// It uses the PostgresStore and Temporal for workflow orchestration
+	svc := service.NewShipmentService(store, temporalClient)
 
 	// Create a TCP listener on port 50051 for the gRPC server
 	// This is where the service will listen for incoming gRPC requests

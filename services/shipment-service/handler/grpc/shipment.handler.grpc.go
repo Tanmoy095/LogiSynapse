@@ -36,7 +36,7 @@ func NewShipmentServer(svc *service.ShipmentService) *ShipmentServer {
 func (s *ShipmentServer) GetShipments(ctx context.Context, req *proto.GetShipmentsRequest) (*proto.GetShipmentsResponse, error) {
 	// Call the business logic (service) to fetch shipments based on filters (origin, status, destination)
 	// and pagination (limit, offset). The service returns internal models.Shipment structs.
-	shipments, err := s.service.GetShipments(req.Origin, req.Status, req.Destination, req.Limit, req.Offset)
+	shipments, err := s.service.GetShipments(ctx, req.Origin, req.Status, req.Destination, req.Limit, req.Offset)
 	if err != nil {
 		return nil, err
 
