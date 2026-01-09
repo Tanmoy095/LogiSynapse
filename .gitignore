@@ -14,6 +14,9 @@ build/
 *.prof
 *.cover
 coverage.out
+*.cgo
+*.a
+*.o
 
 # Ignore vendor directory (if using vendored dependencies)
 vendor/
@@ -21,6 +24,7 @@ vendor/
 # Ignore environment files
 # Prevents sensitive data like DB credentials in .env from being committed
 .env
+.env.*
 .env.local
 .env.development
 .env.test
@@ -33,6 +37,7 @@ Dockerfile.*
 *.log
 *.tar
 *.tar.gz
+*.pid
 
 # Ignore editor and IDE files
 # Excludes configuration files for common editors/IDEs
@@ -41,6 +46,7 @@ Dockerfile.*
 *.swp
 *.swo
 *.swn
+*.iml
 
 # Ignore OS-generated files
 # Excludes system files like .DS_Store (macOS) or Thumbs.db (Windows)
@@ -52,7 +58,64 @@ Thumbs.db
 *.tmp
 *.bak
 *.backup
+*~
 
 # Ignore database data directories
 # Prevents committing local Postgres data (handled by Docker volumes)
 postgres_data/
+*.sqlite3
+*.db
+
+# Ignore Protobuf/GraphQL generated files (if not checked in)
+shared/proto/*.pb.go
+services/graphql-gateway/graph/generated.go
+services/graphql-gateway/graph/generated/
+
+# Ignore sensitive files
+secrets/
+private/
+*.key
+*.pem
+*.crt
+
+# Ignore documentation drafts
+*.draft.md
+
+# Ignore test output
+*.coverprofile
+
+# Ignore system files
+.cache/
+
+# Ignore personal notes
+notes/
+
+# Ignore CI/CD artifacts
+*.ci.log
+
+# Ignore lock files
+package-lock.json
+yarn.lock
+
+# Ignore compressed files
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Ignore images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+
+# Ignore test containers
+/testcontainers/
+
+# Ignore Go module files in all services
+services/*/go.mod
+services/*/go.sum
+services/*/*/go.mod
+services/*/*/go.sum
