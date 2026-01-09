@@ -255,3 +255,33 @@ func (s *PostgresInvoiceStore) FinalizeInvoice(ctx context.Context, invoiceID uu
 	}
 	return nil
 }
+
+// -------------------------------!!After Payment Phase !!-----------------------------------
+// MarkInvoicePaid marks an invoice as PAID, only if it is currently FINALIZED
+func (s *PostgresInvoiceStore) MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID, transactionID string) error {
+	// we only allow marking as PAID if the invoice is currently in FINALIZED status
+	query := `
+		UPDATE invoices 
+		SET status = 'PAID', 
+		payment_intent_id = $2,
+		paid_at = NOW(),
+		updated_at = NOW()
+		WHERE invoice_id = $1 AND status = 'FINALIZED'
+	`
+	res, err := s.db.ExecContext(ctx, query, invoiceID, transactionID)
+	if err != nil {
+		return fmt.Errorf("db:failed to mark invoice as PAID: %w", err)
+	}
+	rows, err := res.RowsAffected() // this ensure that only one row was updated
+	if err != nil {
+		return fmt.Errorf("db: failed to check rows affected: %w", err)
+	}
+
+	// 0 Rows means the invoice either doesn't exist OR it wasn't in FINALIZED state.
+	// This protects us from paying a DRAFT or an already PAID invoice.
+	if rows == 0 {
+		return fmt.Errorf("invoice not found or not in FINALIZED state")
+	}
+
+	return nil
+}

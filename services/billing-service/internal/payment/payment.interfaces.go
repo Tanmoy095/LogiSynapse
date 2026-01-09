@@ -1,4 +1,4 @@
-// services/billing-service/internal/payment/models.payment.go.go
+// services/billing-service/internal/payment/payment.interfaces.go
 package payment
 
 import (
@@ -21,17 +21,14 @@ type PaymentGateway interface {
 	ChargeAttempt(ctx context.Context, paymentReq PaymentRequest) (*PaymentResult, error)
 }
 
-// AccountProvider interface  abstracts the source of truth for user billing account information. Means it provides methods to retrieve billing account details for a given tenant.
-// This bridges the gap between the Billing service and Auth/Account service.
+// AccountProvider lets Payment Service fetch data without knowing about the DB.
+// it is exactly same as accounts.AccountStore
+// The Store layer will implement this.
 type AccountProvider interface {
-	// GetBillingDetails fetches the Stripe ID and Payment Method for a tenant.
-	// It returns the domain 'Account' struct we defined in internal/accounts.
 	GetBillingAccountDetails(ctx context.Context, tenantID uuid.UUID) (*accounts.Account, error)
 }
 
-// InvoiceUpdater abstracts the side-effects of a successful payment.
-// We prefer small interfaces over large ones (Interface Segregation Principle).
+// InvoiceUpdater interface defines methods to update invoice payment status
 type InvoiceUpdater interface {
-	//transactionID is the payment gateway transaction reference
-	MarkPaid(ctx context.Context, invoiceID uuid.UUID, transactionID string) error
+	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID, transactionID string) error
 }

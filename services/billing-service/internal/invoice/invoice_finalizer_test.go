@@ -55,6 +55,9 @@ func (m *MockFinalizerStore) DeleteInvoice(ctx context.Context, id uuid.UUID) er
 func (m *MockFinalizerStore) UpdateStatus(ctx context.Context, id uuid.UUID, s InvoiceStatus) error {
 	return nil
 }
+func (m *MockFinalizerStore) MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID, transactionID string) error {
+	return nil
+}
 
 // --- TESTS ---
 

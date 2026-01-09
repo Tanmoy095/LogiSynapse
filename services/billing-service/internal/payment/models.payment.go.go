@@ -2,8 +2,7 @@ package payment
 
 import (
 	"errors"
-
-	"github.com/google/uuid"
+	"time"
 )
 
 // These structuirs are data transfer object of payment service
@@ -20,7 +19,7 @@ var (
 //PaymentRequest Encapsulates all data needed to a payment transaction
 
 type PaymentRequest struct {
-	ReferenceID     uuid.UUID         // Unique identifier for the payment transaction
+	ReferenceID     string            // Unique identifier for the payment transaction
 	AmountCents     int64             // Amount to be charged in cents
 	Currency        string            // Currency code (e.g., "USD")
 	CustomerID      string            // Identifier for the customer in the payment gateway
@@ -33,8 +32,8 @@ type PaymentRequest struct {
 //PaymentResult Represents the outcome of a payment transaction
 
 type PaymentResult struct {
-	TransactionID string // Unique identifier for the payment transaction in the payment gateway (e.g., Stripe Charge ID)
-	status        string // Status of the payment (e.g., "succeeded", "failed")
-	RawResponse   string // Raw response from the payment gateway for logging/debugging purposes
-	PaidAt        int64  // Timestamp when the payment was completed
+	TransactionID string    // Unique identifier for the payment transaction in the payment gateway (e.g., Stripe Charge ID)
+	status        string    // Status of the payment (e.g., "succeeded", "failed")
+	RawResponse   string    // Raw response from the payment gateway for logging/debugging purposes
+	PaidAt        time.Time // Timestamp when the payment was completed
 }

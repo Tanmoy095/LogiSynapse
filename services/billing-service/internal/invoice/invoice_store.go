@@ -20,4 +20,10 @@ type InvoiceStore interface {
 	// FinalizeInvoice performs the state transition from DRAFT -> FINALIZED.
 	// It must enforce the condition: WHERE status = 'DRAFT'.
 	FinalizeInvoice(ctx context.Context, invoiceID uuid.UUID) error
+
+	//-------------------------------!!After Payment Phase !!-----------------------------------
+	// Atomic State Transition for payment marking.
+	// Here Atomic state means we change status from FINALIZED to PAID only if current status is FINALIZED
+
+	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID, transactionID string) error
 }

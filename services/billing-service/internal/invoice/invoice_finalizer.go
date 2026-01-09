@@ -1,3 +1,5 @@
+//services/billing-service/internal/invoice/invoice_finalizer.go
+
 package invoice
 
 import (
@@ -36,7 +38,7 @@ func (inf *InvoiceFinalizer) FinalizeInvoice(ctx context.Context, invoiceID uuid
 		// Handles PAID, VOID, or unknown states
 		return fmt.Errorf("%w: current status is %s", ErrInvoiceNotDraft, inv.Status)
 	}
-	// 3. Integrity Validation (Sanity Checks)
+	// 3. Integrity Validation (Sanity Checks)conc
 	// Rule: Do not finalize a corrupted or incomplete invoice.
 	if inv.TotalCents < 0 {
 		return fmt.Errorf("integrity violation: negative total amount %d", inv.TotalCents)

@@ -66,6 +66,9 @@ func (m *MockInvoiceStore) GetInvoiceByID(ctx context.Context, id uuid.UUID) (*I
 func (m *MockInvoiceStore) FinalizeInvoice(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
+func (m *MockInvoiceStore) MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID, transactionID string) error {
+	return nil
+}
 
 // Helper to create a dummy UUID for tests
 var testTenantID = uuid.New()
