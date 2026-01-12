@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/accounts"
+	"github.com/Tanmoy095/LogiSynapse/services/billing-service/internal/invoice"
 	"github.com/google/uuid"
 )
 
@@ -28,7 +29,21 @@ type AccountProvider interface {
 	GetBillingAccountDetails(ctx context.Context, tenantID uuid.UUID) (*accounts.Account, error)
 }
 
+// InvoiceReader is a focused interface for fetching invoice data.
+// We separate Read (Get) from Write (MarkPaid) for better segregation.
+type InvoiceReader interface {
+	GetInvoiceByID(ctx context.Context, invoiceID uuid.UUID) (*invoice.Invoice, error)
+}
+
 // InvoiceUpdater interface defines methods to update invoice payment status
 type InvoiceUpdater interface {
 	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID, transactionID string) error
 }
+
+// LedgerRecorder abstracts the accounting system.
+// The Payment Service uses this to book a 'CREDIT' entry after successful payment.
+type LedgerRecorder interface {
+	RecordCreditTransaction(ctx context.Context, tenantID uuid.UUID, amount int64, currency string, referenceID string, description string) error
+}
+
+//InvoiceProvider is a focused interface for fetching invoice data..

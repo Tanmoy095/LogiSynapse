@@ -114,8 +114,12 @@ yarn.lock
 # Ignore test containers
 /testcontainers/
 
-# Ignore Go module files in all services
+# Ignore all Go module files for future safety
+go.mod
+go.sum
 services/*/go.mod
 services/*/go.sum
 services/*/*/go.mod
 services/*/*/go.sum
+shared/go.mod
+shared/go.sum

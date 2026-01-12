@@ -7,3 +7,4 @@ ADD COLUMN IF NOT EXISTS error_message TEXT; -- Good for debugging failed paymen
 
 -- Create index for faster lookups (e.g. "Find invoice for this Stripe payment")
 CREATE INDEX IF NOT EXISTS idx_invoices_payment_intent ON invoices(payment_intent_id);
+
