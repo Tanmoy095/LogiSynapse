@@ -28,7 +28,8 @@ type PaymentService struct {
 	// we only execute one payment flow. The other 49 wait and receive the same result.
 	// This saves 49 Stripe API calls and DB writes.
 
-	sf singleflight.Group
+	sf                  singleflight.Group
+	paymentAttemptStore PaymentAttemptStore // Interface to persist payment attempts
 }
 
 func NewPaymentService(
@@ -37,6 +38,7 @@ func NewPaymentService(
 	accountProvider AccountProvider,
 	paymentGateway PaymentGateway,
 	ledgerRecorder LedgerRecorder,
+	paymentAttemptStore PaymentAttemptStore,
 ) *PaymentService {
 	return &PaymentService{
 		invoiceReader:   invoiceReader,
@@ -45,6 +47,7 @@ func NewPaymentService(
 		paymentGateway:  paymentGateway,
 		ledgerRecorder:  ledgerRecorder,
 		//sf is zero-value initialized, which is safe to use.
+		paymentAttemptStore: paymentAttemptStore,
 	}
 }
 
@@ -57,7 +60,7 @@ func (ps *PaymentService) PayInvoice(ctx context.Context, invoiceID uuid.UUID) e
 	// 2. Execute via SingleFlight
 	// We ignore the return value (val) because we only care if it succeeded or failed.
 	_, err, _ := ps.sf.Do(key, func() (interface{}, error) {
-		return nil, ps.processPaymentLogic(ctx, invoiceID)
+		return nil, ps.PayInvoiceExecution(ctx, invoiceID)
 	})
 
 	return err
@@ -66,8 +69,13 @@ func (ps *PaymentService) PayInvoice(ctx context.Context, invoiceID uuid.UUID) e
 
 // processPaymentLogic contains the actual business logic.
 // This is extracted to keep the SingleFlight closure clean.
-func (ps *PaymentService) processPaymentLogic(ctx context.Context, invoiceID uuid.UUID) error {
+func (ps *PaymentService) PayInvoiceExecution(ctx context.Context, invoiceID uuid.UUID) error {
+	//context Timeout
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	// Fetch the invoice details
+
 	inv, err := ps.invoiceReader.GetInvoiceByID(ctx, invoiceID)
 	if err != nil {
 		return errors.New("failed to fetch invoice: " + err.Error())
@@ -92,9 +100,26 @@ func (ps *PaymentService) processPaymentLogic(ctx context.Context, invoiceID uui
 	if err != nil {
 		return errors.New("failed to fetch billing account details: " + err.Error())
 	}
+	// ---  Record Intent (The State Machine) ---
+	attemptID := uuid.New()
+	attempt := &PaymentAttempt{
+		AttemptID:   attemptID,
+		InvoiceID:   inv.InvoiceID,
+		TenantID:    inv.TenantID,
+		Provider:    "Stripe", // Assuming Stripe for now
+		Status:      PaymentStatusPending,
+		AmountCents: inv.TotalCents,
+		Currency:    inv.Currency,
+		//ProviderPaymentID will be set later when we get it from Stripe
+	}
+	// Persist INTENT before network call
+	if err := ps.paymentAttemptStore.CreatePaymentAttempt(ctx, attempt); err != nil {
+		return fmt.Errorf("failed to record payment attempt: %w", err)
+	}
+
 	//Construct PAyment Request
 	req := PaymentRequest{
-		ReferenceID:     inv.InvoiceID.String(), // CRITICAL: This is our Idempotency Key
+		ReferenceID:     attemptID.String(), //Use ATTEMPT ID as idempotency key, not Invoice ID. This allows retries!
 		AmountCents:     inv.TotalCents,
 		Currency:        inv.Currency,
 		CustomerID:      account.StripeCustomerID, //Assuming we are using Stripe
@@ -115,9 +140,19 @@ func (ps *PaymentService) processPaymentLogic(ctx context.Context, invoiceID uui
 	// but our Idempotency Key protects us on retry.
 	result, err := ps.paymentGateway.ChargeAttempt(stripeCtx, req)
 	if err != nil {
-		// In a real system (Phase 4), we would check `errors.Is(err, ErrProviderDown)` here
-		// and enqueue a retry job. For now, we return the error to the user.
-		return fmt.Errorf("payment declined: %w", err)
+		// Record FAILURE in DB
+		failMsg := err.Error()
+		// We ignore the error from UpdateAttemptStatus because the original 'err' is more important to return
+		_ = ps.paymentAttemptStore.UpdateAttemptStatus(ctx, attemptID, PaymentFailed, "", nil, &failMsg)
+		return fmt.Errorf("payment gateway declined: %w", err)
+	}
+	// Handle Success ---
+	// Update State Machine to SUCCEEDED
+	if dbErr := ps.paymentAttemptStore.UpdateAttemptStatus(ctx, attemptID, PaymentSucceeded, result.TransactionID, nil, nil); dbErr != nil {
+		// 🚨 CRITICAL: Stripe charged, but we couldn't update the attempt to SUCCEEDED.
+		// This leaves the attempt as PENDING. The Reconciler will find it and fix it.
+		log.Printf("[CRITICAL] Payment succeeded (Tx: %s) but Attempt Update failed: %v", result.TransactionID, dbErr)
+		// We continue! Try to mark invoice paid anyway.
 	}
 	//  Finalize Transaction (Write Phase)
 	// If we crash here, we have a "Ghost Charge" (Paid in Stripe, Unpaid in DB).
