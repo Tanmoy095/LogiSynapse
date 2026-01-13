@@ -11,7 +11,7 @@ import (
 type PaymentAttemptStore interface {
 	//CreateAttempt persists a new payment attempt record in the store.
 	// CreateAttempt records the INTENT to pay. Must be called BEFORE Stripe
-	CreateAttempt(ctx context.Context, attempt *PaymentAttempt) error
+	CreatePaymentAttempt(ctx context.Context, attempt *PaymentAttempt) error
 	// UpdateStatus transitions the state (e.g., PENDING -> SUCCEEDED).
 	// It should also update 'provider_payment_id' if it wasn't available at creation.
 	UpdateAttemptStatus(ctx context.Context, attemptID uuid.UUID, status PaymentStatus, providerID string, errCode *string, errMsg *string) error
