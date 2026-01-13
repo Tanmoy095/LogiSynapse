@@ -1,4 +1,18 @@
-# Ignore compiled binaries and executables
+# Exclude all markdown files except root README.md
+*.md
+!README.md
+
+# Exclude go.mod and go.sum everywhere except root
+go.mod
+go.sum
+**/go.mod
+**/go.sum
+
+# Allow root go.mod and go.sum if needed (uncomment if you want to keep them in root)
+# !go.mod
+# !go.sum
+
+# ...existing .gitignore rules (if any)...# Ignore compiled binaries and executables
 # Prevents uploading compiled Go binaries (e.g., shipment-service, graphql-gateway)
 *.exe
 *.exe~
