@@ -1,3 +1,4 @@
+// services/billing-service/internal/payment/models.payment.go.go
 package payment
 
 import (
@@ -32,8 +33,15 @@ type PaymentRequest struct {
 //PaymentResult Represents the outcome of a payment transaction
 
 type PaymentResult struct {
-	TransactionID string    // Unique identifier for the payment transaction in the payment gateway (e.g., Stripe Charge ID)
-	status        string    // Status of the payment (e.g., "succeeded", "failed")
-	RawResponse   string    // Raw response from the payment gateway for logging/debugging purposes
-	PaidAt        time.Time // Timestamp when the payment was completed
+	TransactionID string        // Unique identifier for the payment transaction in the payment gateway (e.g., Stripe Charge ID)
+	status        PaymentStatus // Status of the payment (e.g., "succeeded", "failed")
+	RawResponse   string        // Raw response from the payment gateway for logging/debugging purposes
+	PaidAt        time.Time     // Timestamp when the payment was completed
 }
+
+type PaymentStatus string
+
+const (
+	PaymentSucceeded PaymentStatus = "SUCCEEDED"
+	PaymentFailed    PaymentStatus = "FAILED"
+)

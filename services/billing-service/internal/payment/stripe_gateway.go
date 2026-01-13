@@ -96,7 +96,7 @@ func (sg *StripeGateway) ChargeAttempt(ctx context.Context, chargeReq PaymentReq
 		// Since this is off-session, we can't show a popup, so we fail.
 		return &PaymentResult{
 			TransactionID: pi.ID,
-			status:        string(pi.Status),
+			status:        PaymentStatus(pi.Status),
 			RawResponse:   string(pi.LastResponse.RawJSON),
 			PaidAt:        time.Now(),
 		}, fmt.Errorf("%w: status is %s (requires user action)", ErrPaymentFailed, pi.Status)
@@ -106,7 +106,7 @@ func (sg *StripeGateway) ChargeAttempt(ctx context.Context, chargeReq PaymentReq
 	// 9. Success
 	return &PaymentResult{
 		TransactionID: pi.ID,
-		status:        string(pi.Status),
+		status:        PaymentStatus(pi.Status),
 		RawResponse:   string(pi.LastResponse.RawJSON),
 		PaidAt:        time.Now(),
 	}, nil

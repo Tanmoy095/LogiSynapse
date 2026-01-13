@@ -101,3 +101,50 @@ func (store *PostgresLedgerStore) GetLedgerEntriesForPeriod(ctx context.Context,
 
 	return entries, nil
 }
+
+// RecordTransaction implements payment.LedgerRecorder.
+// It records a payment as a CREDIT (Negative Amount) to balance the user's debt.
+func (store *PostgresLedgerStore) RecordCreditTransaction(ctx context.Context, tenantID uuid.UUID, amount int64, currency string, referenceID string, description string) error {
+
+	// 1. Convert Reference ID (String -> UUID)
+	// The Invoice ID serves as the reference.
+	refUUID, err := uuid.Parse(referenceID)
+	if err != nil {
+		return fmt.Errorf("invalid reference UUID: %w", err)
+	}
+
+	// 2. Determine Logic
+	// "Positive = User owes us". Therefore, a Payment is NEGATIVE.
+	creditAmount := -amount
+
+	// 3. Prepare Query
+	// We use the same table but hardcode the types for a Payment.
+	query := `
+		INSERT INTO billing_ledger 
+		(tenant_id, transaction_type, reference_id, amount_cents, usage_type, currency, description, quantity, unit_price_cents, created_at)
+		VALUES ($1, 'PAYMENT', $2, $3, 'INVOICE_PAYMENT', $4, $5, 1, $3, NOW())
+		ON CONFLICT (tenant_id, reference_id) DO NOTHING
+	`
+
+	// 4. Execute
+	res, err := store.db.ExecContext(ctx, query,
+		tenantID,
+		refUUID,
+		creditAmount, // e.g. -5000 cents
+		currency,
+		description,
+	)
+
+	if err != nil {
+		return fmt.Errorf("ledger: failed to record payment: %w", err)
+	}
+
+	// 5. Idempotency Check
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		// This means we already recorded this payment. Safe to ignore.
+		return nil
+	}
+
+	return nil
+}
