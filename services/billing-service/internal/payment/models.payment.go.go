@@ -4,6 +4,8 @@ package payment
 import (
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // These structuirs are data transfer object of payment service
@@ -42,6 +44,25 @@ type PaymentResult struct {
 type PaymentStatus string
 
 const (
-	PaymentSucceeded PaymentStatus = "SUCCEEDED"
-	PaymentFailed    PaymentStatus = "FAILED"
+	PaymentStatusPending PaymentStatus = "PENDING"
+	PaymentSucceeded     PaymentStatus = "SUCCEEDED"
+	PaymentFailed        PaymentStatus = "FAILED"
+	StatusRequiresAction PaymentStatus = "REQUIRES_ACTION"
 )
+
+// PaymentAttempt represents a record of a payment attempt in the system.
+type PaymentAttempt struct {
+	ID                uuid.UUID // Unique identifier for the payment attempt
+	InvoiceID         uuid.UUID // Associated invoice ID. it helps in linking payment attempt to specific invoice
+	TenantID          uuid.UUID // Tenant identifier for multi-tenant systems
+	provider          string    // Payment provider used (e.g., "Stripe")
+	ProviderPaymentID string    // Identifier from the payment provider (e.g., Stripe PaymentIntent ID)
+	status            PaymentStatus
+	AmountCents       int64
+	Currency          string
+	ErrorCode         *string // Pointer to allow NULL
+	ErrorMessage      *string // Pointer to allow NULL
+	RetryCount        int
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
