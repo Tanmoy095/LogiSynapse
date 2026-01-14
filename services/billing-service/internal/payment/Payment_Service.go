@@ -93,7 +93,7 @@ func (ps *PaymentService) PayInvoiceExecution(ctx context.Context, invoiceID uui
 	// If the user owes nothing, we skip the gateway and mark it paid internally.
 	if inv.TotalCents <= 0 {
 		log.Printf("Invoice %s has 0 amount. Skipping Stripe.", inv.InvoiceID)
-		return ps.MarkAsPaidInternal(ctx, inv.InvoiceID, inv.TenantID, 0, inv.Currency, "system-zero-amount")
+		return ps.FinalizeSuccessfulPayment(ctx, inv.InvoiceID, inv.TenantID, 0, inv.Currency, "system-zero-amount")
 	}
 	//Fetch billing account details for the tenant
 	account, err := ps.accountProvider.GetBillingAccountDetails(ctx, inv.TenantID)
@@ -158,12 +158,12 @@ func (ps *PaymentService) PayInvoiceExecution(ctx context.Context, invoiceID uui
 	// If we crash here, we have a "Ghost Charge" (Paid in Stripe, Unpaid in DB).
 	// Handling this strictly requires a background reconciler (Phase 4).
 	// For now, we log heavily if this fails.
-	return ps.MarkAsPaidInternal(ctx, inv.InvoiceID, inv.TenantID, inv.TotalCents, inv.Currency, result.TransactionID)
+	return ps.FinalizeSuccessfulPayment(ctx, inv.InvoiceID, inv.TenantID, inv.TotalCents, inv.Currency, result.TransactionID)
 }
 
 // markAsPaidInternal handles the local side-effects of a successful payment.
 // It updates the Invoice status AND writes to the Ledger.
-func (ps *PaymentService) MarkAsPaidInternal(
+func (ps *PaymentService) FinalizeSuccessfulPayment(
 	ctx context.Context,
 	invID uuid.UUID,
 	tenantID uuid.UUID,
