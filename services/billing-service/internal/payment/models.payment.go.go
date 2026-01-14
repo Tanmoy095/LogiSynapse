@@ -48,6 +48,7 @@ const (
 	PaymentSucceeded     PaymentStatus = "SUCCEEDED"
 	PaymentFailed        PaymentStatus = "FAILED"
 	StatusRequiresAction PaymentStatus = "REQUIRES_ACTION"
+	PaymentStatusUnknown PaymentStatus = "UNKNOWN"
 )
 
 // PaymentAttempt represents a record of a payment attempt in the system.

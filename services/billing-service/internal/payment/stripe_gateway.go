@@ -135,3 +135,24 @@ func (sg *StripeGateway) mapStripeError(err error) error {
 	}
 	return fmt.Errorf("gateway internal error: %w", err)
 }
+func (sg *StripeGateway) GetPaymentStatus(ctx context.Context, id string) (PaymentStatus, error) {
+	//call stripe API to get payment intent status
+	pi, err := sg.client.PaymentIntents.Get(id, nil) // it will fetch payment intent by id from stripe
+	if err != nil {
+		return PaymentStatusUnknown, sg.mapStripeError(err)
+	}
+	// Map Stripe Status to Domain Status
+	switch pi.Status {
+
+	case "succeeded":
+		return PaymentSucceeded, nil
+	case "requires_payment_method", "canceled":
+		return PaymentFailed, nil
+	case "processing":
+		return PaymentStatusPending, nil
+	default:
+		// "requires_action", "requires_capture", etc. treat as pending or specialized status
+		return PaymentStatusPending, nil
+	}
+
+}

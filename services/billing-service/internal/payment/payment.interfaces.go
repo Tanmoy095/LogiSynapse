@@ -20,6 +20,7 @@ type PaymentGateway interface {
 	//ChargeAttempt tries to charge the given amount (in cents) to the payment method on file for the specified tenant.
 	//it executes a synchronous ,off-session charge..Means there is no user interaction involved
 	ChargeAttempt(ctx context.Context, paymentReq PaymentRequest) (*PaymentResult, error)
+	GetPaymentStatus(ctx context.Context, id string) (PaymentStatus, error)
 }
 
 // AccountProvider lets Payment Service fetch data without knowing about the DB.
