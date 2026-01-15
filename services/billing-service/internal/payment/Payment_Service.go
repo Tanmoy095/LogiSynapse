@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -128,6 +129,7 @@ func (ps *PaymentService) PayInvoiceExecution(ctx context.Context, invoiceID uui
 		MetaData: map[string]string{
 			"tenant_id":  inv.TenantID.String(),
 			"invoice_id": inv.InvoiceID.String(),
+			"attempt_id": attemptID.String(),
 		},
 	}
 	// Execute Charge with Timeout (Safety Guard)
@@ -138,14 +140,26 @@ func (ps *PaymentService) PayInvoiceExecution(ctx context.Context, invoiceID uui
 	// Execute Charge (External Phase)
 	// This is the slowest part. If context cancels here, Stripe might still charge,
 	// but our Idempotency Key protects us on retry.
-	result, err := ps.paymentGateway.ChargeAttempt(stripeCtx, req)
+	result, err := ps.executeWithRetry(ctx, func() (*PaymentResult, error) {
+		// This uses the 'stripeCtx' (30s timeout) passed down or derived inside
+		return ps.paymentGateway.ChargeAttempt(stripeCtx, req)
+	})
 	if err != nil {
-		// Record FAILURE in DB
 		failMsg := err.Error()
-		// We ignore the error from UpdateAttemptStatus because the original 'err' is more important to return
-		_ = ps.paymentAttemptStore.UpdateAttemptStatus(ctx, attemptID, PaymentFailed, "", nil, &failMsg)
-		return fmt.Errorf("payment gateway declined: %w", err)
+		failCode := "payment_failed"
+
+		_ = ps.paymentAttemptStore.UpdateAttemptStatus(
+			ctx,
+			attemptID,
+			PaymentFailed,
+			"",
+			&failCode,
+			&failMsg,
+		)
+
+		return fmt.Errorf("payment failed after retries: %w", err)
 	}
+
 	// Handle Success ---
 	// Update State Machine to SUCCEEDED
 	if dbErr := ps.paymentAttemptStore.UpdateAttemptStatus(ctx, attemptID, PaymentSucceeded, result.TransactionID, nil, nil); dbErr != nil {
@@ -190,4 +204,70 @@ func (ps *PaymentService) FinalizeSuccessfulPayment(
 	}
 
 	return nil
+}
+
+// executeWithRetry wraps the Stripe call with exponential backoff.
+func (ps *PaymentService) executeWithRetry(ctx context.Context, operation func() (*PaymentResult, error)) (*PaymentResult, error) {
+
+	const (
+		maxRetries = 3
+		baseDelay  = 200 * time.Millisecond
+		maxDelay   = 2 * time.Second
+	)
+
+	var lastErr error // to capture the last error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Check Context (Did user cancel? Did context timeout hit?)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		} // it means context is cancelled or timed out so we return immediately with context error
+
+		//Wait before retrying (not on first attempt)
+		if attempt > 0 {
+			sleep(ctx, calculateBackoff(attempt, baseDelay, maxDelay))
+		}
+		// Execute Operation
+		result, err := operation()
+		if err == nil { // that means success so we return result not retry anymore
+			return result, nil
+		}
+
+		lastErr = err
+
+		// Check if error is retryAble.Decide whether retrying makes sense
+		if !IsRetryAbleError(err) { // that means error is not retryAble so we return immediately
+			return nil, err // Permanent failure
+		}
+		log.Printf(
+			"[Payment Retry] Attempt %d/%d failed: %v",
+			attempt, maxRetries, err,
+		)
+
+	}
+	return nil, fmt.Errorf("retry limit exceeded: %w", lastErr)
+
+}
+func calculateBackoff(attempt int, baseDelay, maxDelay time.Duration) time.Duration { // it calculates exponential backoff delay . Means delay increases exponentially with each attempt
+	backoff := time.Duration(1<<attempt) * baseDelay         // if baseDelay is 200ms , then for attempt 1 i=1 so it will be 200ms  , for attempt i=2 it will be 400 and so on
+	jitter := time.Duration(rand.Int63n(int64(backoff) / 5)) //jitter is random value to add randomness to backoff delay so that multiple retries don't happen at the same time
+
+	if backoff+jitter > maxDelay { //that means if calculated backoff is more than maxDelay we return maxDelay
+		return maxDelay
+	}
+	return backoff + jitter // return backoff with jitter if it's less than maxDelay
+
+}
+func sleep(ctx context.Context, duration time.Duration) {
+	timer := time.NewTimer(duration) // this creates a timer that will send a signal on its channel after the specified duration
+
+	defer timer.Stop() // stop the timer to release resources
+
+	select {
+	case <-ctx.Done(): // that means context is cancelled or timed out
+		return // exit immediately
+	case <-timer.C: // that means timer has completed its duration
+		return // normal sleep complete
+	}
+
 }
