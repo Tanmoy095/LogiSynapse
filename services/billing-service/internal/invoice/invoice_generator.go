@@ -111,7 +111,7 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(ctx context.Context, tenant
 			// Note: UnitPrice should ideally be consistent per usage type.
 			// If prices changed mid-month, this simple grouping might show an "Average" or last price.
 			// For Phase 3.1, keeping the first UnitPrice is acceptable, or we set to 0 if they differ.
-			if line.UnitPriceCents != entry.UnitPrice {
+			if line.UnitPriceCents != entry.UnitPriceCents {
 				// Complex case: Mixed prices for same usage type (e.g. tiered pricing).
 				// Solution: Set UnitPrice to 0 to indicate "Variable Rate" on invoice
 				line.UnitPriceCents = 0
@@ -123,8 +123,8 @@ func (ig *InvoiceGenerator) GenerateInvoiceForTenant(ctx context.Context, tenant
 				UsageType:      entry.UsageType,
 				Description:    fmt.Sprintf("%s Charges", entry.UsageType), // Generic description
 				LineTotalCents: amount,
-				Quantity:       entry.Quantity,  // Initial quantity
-				UnitPriceCents: entry.UnitPrice, // Initial unit price
+				Quantity:       entry.Quantity,       // Initial quantity
+				UnitPriceCents: entry.UnitPriceCents, // Initial unit price
 
 			}
 		}

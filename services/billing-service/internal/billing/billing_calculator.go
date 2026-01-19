@@ -104,7 +104,7 @@ func (bc *billingCalculator) ProcessingSingleRecord(
 		TransactionType: billingtypes.TransactionType(record.UsageType), // Customer owes us money..ENFORCED: It's a Debit
 		AmountCents:     totalCostCents,
 		Quantity:        record.TotalQuantity,
-		UnitPrice:       priceRule.UnitPriceCents,
+		UnitPriceCents:  priceRule.UnitPriceCents,
 		Currency:        priceRule.Currency,
 		// Helpful description for the invoice UI later
 		Description: fmt.Sprintf("%s Fee: %d units @ %s %d cents/unit",

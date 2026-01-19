@@ -98,7 +98,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     500, // $5.00
 					Quantity:        10,
-					UnitPrice:       50, // $0.50
+					UnitPriceCents:  50, // $0.50
 					Currency:        "USD",
 				},
 				{
@@ -106,7 +106,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     100, // $1.00
 					Quantity:        100,
-					UnitPrice:       1, // $0.01
+					UnitPriceCents:  1, // $0.01
 					Currency:        "USD",
 				},
 			},
@@ -175,7 +175,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     100, // $1.00
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 			},
@@ -203,7 +203,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 			},
@@ -220,7 +220,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 				{
@@ -228,7 +228,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "EUR",
 				},
 			},
@@ -247,7 +247,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     1000,
 					Quantity:        10,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 				{
@@ -255,7 +255,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     800,
 					Quantity:        10,
-					UnitPrice:       80, // Different price!
+					UnitPriceCents:  80, // Different price!
 					Currency:        "USD",
 				},
 			},
@@ -296,7 +296,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     500,
 					Quantity:        5,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 				{
@@ -304,7 +304,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeCredit,
 					AmountCents:     200,
 					Quantity:        2,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 			},
@@ -338,7 +338,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 				{
@@ -346,7 +346,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeCredit,
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 			},
@@ -369,7 +369,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 				{
@@ -377,7 +377,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeCredit,
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 			},
@@ -416,7 +416,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: "Unknown", // Invalid
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 				{
@@ -424,7 +424,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     200,
 					Quantity:        2,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 			},
@@ -475,7 +475,7 @@ func TestGenerateInvoiceForTenant(t *testing.T) {
 					TransactionType: billingtypes.TransactionTypeDebit,
 					AmountCents:     100,
 					Quantity:        1,
-					UnitPrice:       100,
+					UnitPriceCents:  100,
 					Currency:        "USD",
 				},
 			},

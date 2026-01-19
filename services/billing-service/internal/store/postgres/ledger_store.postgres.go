@@ -39,7 +39,7 @@ func (store *PostgresLedgerStore) CreateLedgerEntry(ctx context.Context, entry l
 		entry.Currency,
 		entry.Description,
 		entry.Quantity,
-		entry.UnitPrice,
+		entry.UnitPriceCents,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert ledger entry: %w", err)
@@ -83,15 +83,18 @@ func (store *PostgresLedgerStore) GetLedgerEntriesForPeriod(ctx context.Context,
 			&entry.TransactionType,
 			&entry.EntryID,
 			&entry.AmountCents,
+			&entry.UsageType,
 			&entry.Currency,
 			&entry.Description,
 			&entry.Quantity,
-			&entry.UnitPrice,
+			&entry.UnitPriceCents,
 			&createdAt,
-			&entry.UsageType,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan ledger entry: %w", err)
+		}
+		if createdAt.Valid {
+			entry.CreatedAt = createdAt.Time
 		}
 		entries = append(entries, entry)
 	}

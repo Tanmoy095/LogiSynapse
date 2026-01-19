@@ -1,3 +1,4 @@
+// services/billing-service/internal/payment/webhook.types.go
 package payment
 
 // NormalizedEvent is the "Universal Language" of our payment system.

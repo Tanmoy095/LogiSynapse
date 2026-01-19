@@ -27,9 +27,9 @@ type LedgerEntry struct {
 	Description     string                       // Description or memo for the ledger entry
 	ReferenceID     string                       // External ID (e.g., stripe payment Intent ID)
 
-	Currency  string    // Currency code (e.g., "USD")
-	CreatedAt time.Time // Timestamp of when the entry was created
-	UsageType billingtypes.UsageType
-	Quantity  int64 // e.g., number of shipments
-	UnitPrice int64 // e.g., price per shipment in cents
+	Currency       string    // Currency code (e.g., "USD")
+	CreatedAt      time.Time // Timestamp of when the entry was created
+	UsageType      billingtypes.UsageType
+	Quantity       int64 // e.g., number of shipments
+	UnitPriceCents int64 // price per unit in cents
 }
