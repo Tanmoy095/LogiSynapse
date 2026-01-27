@@ -7,9 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL, --Case-normalized (lowercase) email. App logic normalizes before insert.
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
-    password_hash TEXT NOT NULL, -- Store Argon2id hashes (with salt). NULL if OAuth-only user. here.
+    password_hash TEXT , -- Store Argon2id hashes (with salt). NULL if OAuth-only user. here.
     password_changed_at TIMESTAMPTZ DEFAULT NOW(), -- Track password changes for security.
-    status TEXT NOT NULL DEFAULT 'active', --Enum: 'active', 'DELETED', 'suspended', USE CHECK FOR SAFETY.
+    status TEXT NOT NULL DEFAULT 'active', --Enum: 'active', 'deleted', 'suspended', USE CHECK FOR SAFETY.
     is_super_admin BOOLEAN NOT NULL DEFAULT FALSE, --Global super-admin flag. Global privilege flag, orthogonal to tenants.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- Immutable creation timestamp.
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()   -- Last update timestamp (app updates on changes).
