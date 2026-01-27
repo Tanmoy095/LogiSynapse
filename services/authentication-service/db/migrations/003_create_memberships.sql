@@ -31,13 +31,6 @@ CREATE INDEX IF NOT EXISTS idx_memberships_tenant_user ON memberships(tenant_id,
 -- 2. By user+tenant: For "my memberships" (O(log n)).
 CREATE INDEX IF NOT EXISTS idx_memberships_user_tenant ON memberships (user_id, tenant_id);
 
--- Enable Row Level Security on sensitive tables
-ALTER TABLE memberships ENABLE ROW LEVEL SECURITY;
-
--- Create a policy: A user can only see memberships if their user_id matches
-CREATE POLICY user_membership_policy ON memberships
-    FOR SELECT
-    USING (user_id = auth.uid()); -- auth.uid() is a helper from your app context
 
 -- Updated_at trigger.
 CREATE TRIGGER trig_memberships_updated_at
