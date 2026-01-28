@@ -18,3 +18,15 @@ func EvaluateEffectiveRole(tenantOwnerID, userID uuid.UUID, assignedRole members
 	// Fallback to the role stored in the membership table (Admin/Member).
 	return assignedRole
 }
+
+/*This is directionally correct, but not senior-clean.
+Why?
+Domain logic should not accept raw strings
+This leaks infrastructure assumptions into the domain
+It allows invalid states (membershipRole = "banana")
+Interview-grade correction (you will do this later)
+Accept membership.MemberShipRole
+Return a strong enum, not string
+Ownership logic should live in policy, not entity
+We’ll fix this on Day 6 (Policy Layer).
+For now: acceptable, but I see it.*/
