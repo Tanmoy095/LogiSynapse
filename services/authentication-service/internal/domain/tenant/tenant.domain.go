@@ -22,3 +22,12 @@ type Tenant struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
+// EffectiveRole determines what permissions a user has.
+// This is the core logic that fixes the dual-source-of-truth.
+func (t *Tenant) GetEffectiveRole(userID uuid.UUID, membershipRole string) string {
+	if t.OwnerUserID == userID {
+		return "owner" // Owner wins, regardless of what's in the membership table.
+	}
+	return membershipRole
+}

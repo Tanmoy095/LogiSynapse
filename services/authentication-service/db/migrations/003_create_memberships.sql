@@ -8,7 +8,7 @@
 CREATE TABLE IF NOT EXISTS memberships (
     user_id UUID NOT NULL,    -- References users.id.
     tenant_id UUID NOT NULL,   -- References tenants.id.
-    role TEXT NOT NULL DEFAULT 'member',        -- e.g., 'owner', 'admin', 'member' . Enum-like..
+    role TEXT NOT NULL DEFAULT 'member',        -- e.g.,  'admin', 'member' . Enum-like..
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -21,7 +21,7 @@ ALTER TABLE memberships ADD CONSTRAINT fk_membership_tenant FOREIGN KEY(tenant_i
 
 -- Enforce role values.
 
-ALTER TABLE memberships ADD CONSTRAINT check_membership_role CHECK (role IN ('owner', 'admin', 'member'));
+ALTER TABLE memberships ADD CONSTRAINT check_membership_role CHECK (role IN ('admin', 'member'));
 
 -- Indexes:
 -- 1. By tenant+user: Hot for authz checks (O(log n)).
