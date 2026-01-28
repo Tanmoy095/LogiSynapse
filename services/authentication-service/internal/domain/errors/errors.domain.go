@@ -1,4 +1,4 @@
-// services/authentication-service/internal/domain/errors/errors.go
+// services/authentication-service/internal/domain/errors/errors.domain.go
 package errors
 
 import "errors"

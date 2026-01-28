@@ -6,8 +6,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// EvaluateEffectiveRole calculates the final authority a user has.
-// This is the SINGLE SOURCE OF TRUTH for permissions.
+// EffectiveRole calculates the actual authority a user has within a tenant.
+// RULE: Tenant Ownership (in tenants table) overrides any specific role
+// assigned in the memberships table. This prevents "dual source of truth" drift.
 func EvaluateEffectiveRole(tenantOwnerID, userID uuid.UUID, assignedRole membership.MemberShipRole) membership.MemberShipRole {
 	// Invariant: The user defined as the owner in the Tenant table
 	// ALWAYS gets RoleOwner, overriding the membership table.
