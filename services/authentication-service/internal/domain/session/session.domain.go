@@ -9,8 +9,8 @@ import (
 
 type RefreshToken struct {
 	TokenID  uuid.UUID
-	UserId   uuid.UUID
-	TenantId *uuid.UUID // Optional (nil if user not logged into specific tenant yet)
+	UserID   uuid.UUID
+	TenantID *uuid.UUID // Optional (nil if user not logged into specific tenant yet)
 	// TokenHash is the SHA-256 hash of the raw, opaque refresh token string.
 	// WHY: We never store raw tokens. If the database is leaked, hashes are useless to attackers.
 	// HOW: When a user sends a token, we hash it in the app and query the DB for the match.

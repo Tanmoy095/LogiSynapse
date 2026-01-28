@@ -1,0 +1,80 @@
+//services/authentication-service/api/proto/auth/v1/auth.api.proto
+
+syntax = "proto3";
+package auth.v1;
+//Authservice acts as the single source of truth for the identity and access
+
+service  AuthService{
+    //Register User Creates a new global Identity
+    rpc RegisterUser( RegisterUserRequest  ) returns (RegisterUserResponse);
+    // Login starts a new Token Family.
+    rpc LoginUser( LoginUserRequest ) returns (LoginUserResponse);
+    // RefreshSession swaps an old Refresh Token for a new pair (Rotation).
+    // RefreshSession implements the Rotation Chain (O(log n) hot path).
+    // It consumes the old refresh token and provides a new pair.
+    rpc RefreshSession(RefreshSessionRequest) returns (LoginUserResponse);
+    // LogoutUser invalidates a specific session family (revoked_at = NOW()).
+    rpc LogoutUser( LogoutUserRequest ) returns (LogoutUserResponse);
+    // CreateTenant establishes a new isolation boundary.
+    rpc CreateTenant( CreateTenantRequest ) returns (CreateTenantResponse);
+
+    rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
+}
+
+
+// Messages
+message RegisterUserRequest {
+    string email = 1; //must me a valid email
+    string password = 2; //must meet password policy. Min 8 char, 1 upper, 1 lower, 1 number, 1 special char
+    string FirstName = 3;
+    string LastName = 4;
+
+}
+message RegisterUserResponse {
+    string user_id = 1; //UUID of the newly created user
+    // We explicitly do NOT return tokens here. 
+  // Force the user to Login immediately to verify flow.
+}
+message LoginUserRequest {
+    string email = 1;
+    string password = 2;
+    //device_fingerprint is useful for risk analysis (Day 22)
+    string device_fingerprint = 3;
+}
+message LoginUserResponse {
+    string access_token = 1; //access token
+    string refresh_token = 2; //refresh token
+    int64 expires_in = 3;     
+  string token_type = 4;    // e.g., "Bearer"
+
+}
+message RefreshSessionRequest {
+  string refresh_token = 1; // The current opaque refresh token
+  string device_fingerprint = 2;
+}
+message LogoutUserRequest {
+    // We usually extract the refresh_token from a cookie or header,
+  // but it can be explicitly passed here to revoke the family.
+  string refresh_token = 1;
+}
+message LogoutUserResponse {
+
+  bool success = 1;
+
+}
+
+message CreateTenantRequest {
+    string name = 1; //Name of the tenant
+}
+message CreateTenantResponse {
+  string tenant_id = 1;
+}
+message InviteMemberRequest {
+  string email = 1;     // Better to invite by email than raw UUID
+  string tenant_id = 2; // Context
+  string role = 3;      // Restricted to 'admin' or 'member'
+}
+
+message InviteMemberResponse {
+  bool success = 1;
+}

@@ -10,8 +10,10 @@ import (
 )
 
 type TenantStore interface {
-	CreateTenant(ctx context.Context, tenant *tenant.Tenant) error
+	// CreateTenantWithOwnership ensures the Tenant and the Owner's Membership
+	// are created in a single Database Transaction.
+	CreateTenantWithOwnership(ctx context.Context, t *tenant.Tenant) error
 	GetTenantByID(ctx context.Context, tenantID uuid.UUID) (*tenant.Tenant, error)
 	UpdateTenantStatus(ctx context.Context, tenantID uuid.UUID, status tenant.TenantStatus) error
-	GetTenantByOwnerID(ctx context.Context, ownerUserID uuid.UUID) ([]tenant.Tenant, error)
+	ListTenantsByOwnerID(ctx context.Context, ownerUserID uuid.UUID) ([]tenant.Tenant, error)
 }

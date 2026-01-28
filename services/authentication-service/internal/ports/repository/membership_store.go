@@ -11,7 +11,7 @@ import (
 
 type MemberShipStore interface {
 	// Define methods for membership store here
-	AddMember(ctx context.Context, membership *membership.MemberShip) error
+	CreateMembership(ctx context.Context, membership *membership.MemberShip) error
 	GetMembersByTenantID(ctx context.Context, tenantID uuid.UUID) ([]membership.MemberShip, error)
 	ListMembersByUserID(ctx context.Context, userID uuid.UUID) ([]*membership.MemberShip, error)
 	GetMember(ctx context.Context, userID, tenantID uuid.UUID) (*membership.MemberShip, error)
