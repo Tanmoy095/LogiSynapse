@@ -12,7 +12,8 @@ type MemberShipRole string
 const (
 	MemberShipRoleAdmin  MemberShipRole = "admin"
 	MemberShipRoleMember MemberShipRole = "member"
-	MemberShipRoleOwner  MemberShipRole = "owner"
+	// RoleOwner is not assigned in the DB, but used in the Policy layer.
+	MemberShipRoleOwner MemberShipRole = "owner"
 )
 
 type MemberShip struct {
