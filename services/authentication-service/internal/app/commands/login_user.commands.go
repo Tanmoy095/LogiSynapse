@@ -1,4 +1,4 @@
-// services/authentication-service/internal/app/commands/login_user.go
+// services/authentication-service/internal/app/commands/login_user.commands.go
 package commands
 
 import (
