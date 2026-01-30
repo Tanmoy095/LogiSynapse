@@ -25,4 +25,7 @@ var (
 	// System/Validation Errors
 	ErrInvalidInput        = errors.New("invalid input arguments")
 	ErrInternalServerError = errors.New("internal server error")
+	ErrUnauthorized        = errors.New("unauthorized access")
+	ErrNotTenantAdmin      = errors.New("operation requires tenant admin privileges")
+	ErrInvalidState        = errors.New("Invalid State")
 )

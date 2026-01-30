@@ -6,18 +6,30 @@ import (
 	"github.com/google/uuid"
 )
 
-// EffectiveRole calculates the actual authority a user has within a tenant.
-// RULE: Tenant Ownership (in tenants table) overrides any specific role
-// assigned in the memberships table. This prevents "dual source of truth" drift.
-func EvaluateEffectiveRole(tenantOwnerID, userID uuid.UUID, assignedRole membership.MemberShipRole) membership.MemberShipRole {
-	// Invariant: The user defined as the owner in the Tenant table
-	// ALWAYS gets RoleOwner, overriding the membership table.
+// EffectiveRole calculates the actual authority a user has.
+//
+// Golden Rules Enforced:
+// 1. Tenant Owner is ALWAYS 'owner' (System of record: tenants table).
+// 2. Pending invites grant NO authority (System of record: memberships table).
+func EffectiveRole(tenantOwnerID, userID uuid.UUID, member *membership.MemberShip) membership.Role {
+	// 1. Check Ownership (Absolute Truth)
 	if tenantOwnerID == userID {
-		return membership.MemberShipRoleOwner
+		return membership.RoleOwner
 	}
 
-	// Fallback to the role stored in the membership table (Admin/Member).
-	return assignedRole
+	// 2. Check Membership Existence
+	if member == nil {
+		return membership.RoleNone
+	}
+
+	// 3. Check Invitation Status (Rule 3)
+	// Even if DB says 'admin', if status is 'pending', they are nobody.
+	if member.MemberShipStatus != membership.StatusActive {
+		return membership.RoleNone
+	}
+
+	// 4. Return Stored Role ('admin' or 'member')
+	return member.MemberShipRole
 }
 
 /*This is directionally correct, but not senior-clean.

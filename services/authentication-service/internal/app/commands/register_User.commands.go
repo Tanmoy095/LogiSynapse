@@ -52,7 +52,7 @@ func (h *RegisterUserHandler) Handle(ctx context.Context, params RegisterUserPar
 		LastName:     params.LastName,
 		PasswordHash: passwordHash,
 		Status:       user.UserStatusActive,
-		IsSuperAdmin: false, // By default not superadmin
+		IsSuperAdmin: false, // Registration NEVER creates a super admin
 		CreatedAt:    time.Now().UTC(),
 		UpdatedAt:    time.Now().UTC(),
 	}

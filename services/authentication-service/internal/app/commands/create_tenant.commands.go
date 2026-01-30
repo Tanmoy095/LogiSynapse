@@ -11,10 +11,14 @@ import (
 	"github.com/google/uuid"
 )
 
-//Any active, authenticated user may create a tenant,
-// and that user becomes the owner of that tenant.
-//An authenticated, active user may create a tenant for themselves.
-//The creator becomes the owner.
+/*
+CREATE TENANT — PLATFORM COMMAND
+
+Golden Rules enforced:
+1. Only SUPER ADMINS can create tenants
+2. Ownership is a PROPERTY of the tenant
+3. No membership is created for the owner
+*/
 
 type CreateTenantHandler struct {
 	// Implementation pending
@@ -33,18 +37,20 @@ func NewCreateTenantHandler(
 }
 
 type CreateTenantParams struct {
-	TenantName  string
-	ActorUserID uuid.UUID // who is calling (from JWT)
-	OwnerUserID uuid.UUID // who will own the tenant (usually same)
+	TenantName        string
+	ActorUserID       uuid.UUID // who is executing this command (from JWT)
+	IsActorSuperAdmin bool      // Is the actor a Super Admin? Injected by auth middleware
+	OwnerUserID       uuid.UUID // Who will own the tenant
 }
 
 func (h *CreateTenantHandler) Handle(ctx context.Context, params CreateTenantParams) (uuid.UUID, error) {
-	//Authorization: actor can only create tenant for themselves (for now)
-	if params.ActorUserID != params.OwnerUserID {
-		return uuid.Nil, domainError.ErrInvalidInput
+	// 1. Enforce Rule 1: Platform Authority
+	// "Only SUPER ADMINS can create tenants"
+	if !params.IsActorSuperAdmin {
+		return uuid.Nil, domainError.ErrUnauthorized // "You are not a god"
 	}
-	//  Verify User Exists (Referential Integrity)
-	// We assume the ID comes from a valid JWT, but the user might have been deleted 1ms ago.
+
+	// Referential integrity: owner must exist & be active
 	owner, err := h.userRepo.GetUserByID(ctx, params.OwnerUserID)
 	if err != nil {
 		return uuid.Nil, domainError.ErrUserNotFound
@@ -52,6 +58,7 @@ func (h *CreateTenantHandler) Handle(ctx context.Context, params CreateTenantPar
 	if owner.Status != "active" {
 		return uuid.Nil, domainError.ErrUserSuspended
 	}
+	// RULE 2 — OWNER IS A TENANT PROPERTY
 	//Construct Tenant Entity
 	newTenant := &tenant.Tenant{
 		TenantID:     uuid.New(),
@@ -66,6 +73,7 @@ func (h *CreateTenantHandler) Handle(ctx context.Context, params CreateTenantPar
 		return uuid.Nil, err
 	}
 	//  (Future) Publish "TenantCreated" event for Billing Service via Kafka
+	// (Future) Emit TenantCreated event
 
 	return newTenant.TenantID, nil
 }

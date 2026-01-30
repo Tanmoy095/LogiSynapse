@@ -75,7 +75,7 @@ func (h *LoginUserHandler) Handler(ctx context.Context, params LoginParams) (*Lo
 	accessToken, jwtDuration, err := h.tokenSigner.SignAccessToken(ctx, crypto.AccessClaims{
 		UserID:       user.UserID,
 		UserEmail:    user.UserEmail,
-		IsSuperAdmin: user.IsSuperAdmin,
+		IsSuperAdmin: user.IsSuperAdmin, // Critical for Rule 1 enforcement elsewhere
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign access token: %w", err)

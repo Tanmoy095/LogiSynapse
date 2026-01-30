@@ -12,8 +12,9 @@ import (
 type MemberShipStore interface {
 	// Define methods for membership store here
 	CreateMembership(ctx context.Context, membership *membership.MemberShip) error
+	UpdateMembershipStatus(ctx context.Context, membership *membership.MemberShip) error
 	GetMembersByTenantID(ctx context.Context, tenantID uuid.UUID) ([]membership.MemberShip, error)
 	ListMembersByUserID(ctx context.Context, userID uuid.UUID) ([]*membership.MemberShip, error)
 	GetMember(ctx context.Context, userID, tenantID uuid.UUID) (*membership.MemberShip, error)
-	UpdateMemberRole(ctx context.Context, userID, tenantID uuid.UUID, role membership.MemberShipRole) error
+	UpdateMemberRole(ctx context.Context, userID, tenantID uuid.UUID, role membership.Role) error
 }
