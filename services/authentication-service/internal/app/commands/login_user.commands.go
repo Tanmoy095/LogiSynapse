@@ -3,6 +3,8 @@ package commands
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -58,7 +60,13 @@ func (h *LoginUserHandler) Handler(ctx context.Context, params LoginParams) (*Lo
 		// For high security, we would "fake" a password verify here to equalize timing.
 		return nil, domainError.ErrInvalidCredentials
 	}
-	//Verify Password
+	// FIX  OAuth Protection
+	// If PasswordHash is empty, this user registered via Google/GitHub.
+	// They cannot login with a password.
+	if user.PasswordHash == "" {
+		return nil, domainError.ErrInvalidCredentials
+	}
+	//Verify Password-->(Argon2 - CPU Intensive)
 	match, err := h.passwordHash.VerifyPassword(ctx, params.Password, user.PasswordHash)
 	if err != nil || !match {
 		return nil, domainError.ErrInvalidCredentials
@@ -81,19 +89,25 @@ func (h *LoginUserHandler) Handler(ctx context.Context, params LoginParams) (*Lo
 		return nil, fmt.Errorf("failed to sign access token: %w", err)
 	}
 	//Refresh Token (Opaque - Stateful)
-	//WE Create the Domain Entity First
+	//WE Create the Domain Entity First (Opaque)
 	FamilyID := uuid.New()                 // New login = New Family
 	refreshTokenStr := uuid.New().String() //Opaque Token String. It needs to be long and random enough.
 	// We must hash the refresh token before storage
-	refreshTokenHash, err := h.passwordHash.HashPassword(ctx, refreshTokenStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash refresh token: %w", err)
-	}
+	// refreshTokenHash, err := h.passwordHash.HashPassword(ctx, refreshTokenStr)
+	//.........................................................................
+	// FIX 2: Use SHA-256 for Refresh Tokens (Fast & Deterministic)
+	// We do NOT use Argon2 here because we need fast lookups and it's high-entropy random data.
+	rawHash := sha256.Sum256([]byte(refreshTokenStr))
+	refreshTokenHash := hex.EncodeToString(rawHash[:])
+
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to hash refresh token: %w", err)
+	// }
 	expiresAt := time.Now().Add(30 * 24 * time.Hour) // 30 Days
 	refreshTokenEntity := &session.RefreshToken{
 		TokenID:        uuid.New(),
 		UserID:         user.UserID,
-		TokenHash:      refreshTokenHash,
+		TokenHash:      refreshTokenHash, // Storing SHA-256 hash
 		FamilyID:       FamilyID,
 		IssuedAt:       time.Now(),
 		ExpiresAt:      expiresAt,

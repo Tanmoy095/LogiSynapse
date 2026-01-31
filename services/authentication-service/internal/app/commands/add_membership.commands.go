@@ -79,6 +79,12 @@ func (h *AddMembershipCmd) Handle(ctx context.Context, params AddMembershipParam
 
 	//If any fail: It returns the error immediately, and the rest of the function stops.
 
+	// FIX: The Owner cannot be invited as a member
+	// (They are already the owner via the Tenants table)
+	if targetTenant.OwnerUserID == targetUser.UserID {
+		return domainError.ErrInvalidInput
+	}
+
 	// task:-->// Find out what role the "Inviter/Actor" has in this tenant
 	actorMembership, _ := h.membershipRepo.GetMember(ctx, params.ActorUserID, params.TenantID)
 	// Determine the "Effective Role"
