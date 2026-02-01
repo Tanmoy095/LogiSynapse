@@ -23,9 +23,12 @@ var (
 	ErrDuplicateMembership = errors.New("user is already a member of this tenant")
 
 	// System/Validation Errors
-	ErrInvalidInput        = errors.New("invalid input arguments")
-	ErrInternalServerError = errors.New("internal server error")
-	ErrUnauthorized        = errors.New("unauthorized access")
-	ErrNotTenantAdmin      = errors.New("operation requires tenant admin privileges")
-	ErrInvalidState        = errors.New("Invalid State")
+	ErrInvalidInput          = errors.New("invalid input arguments")
+	ErrInternalServerError   = errors.New("internal server error")
+	ErrUnauthorized          = errors.New("unauthorized access")
+	ErrNotTenantAdmin        = errors.New("operation requires tenant admin privileges")
+	ErrRequestAlreadyPending = errors.New("you already have a pending tenant request")
+	ErrRequestNotFound       = errors.New("tenant request not found")
+	ErrInvalidState          = errors.New("operation not allowed in current state")
+	ErrUserNotActive         = errors.New("user account is not active")
 )
