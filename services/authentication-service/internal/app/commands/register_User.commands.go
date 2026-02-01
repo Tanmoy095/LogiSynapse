@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/audit"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/user"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/ports/crypto"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/ports/repository"
@@ -15,15 +16,18 @@ import (
 type RegisterUserHandler struct {
 	UserRepo     repository.UserStore
 	passwordHash crypto.PasswordHasher
+	auditRepo    repository.AuditStore
 }
 
 func NewRegisterUserHandler(
 	userRepo repository.UserStore,
 	passwordHash crypto.PasswordHasher,
+	auditRepo repository.AuditStore,
 ) *RegisterUserHandler {
 	return &RegisterUserHandler{
 		UserRepo:     userRepo,
 		passwordHash: passwordHash,
+		auditRepo:    auditRepo,
 	}
 }
 
@@ -61,6 +65,15 @@ func (h *RegisterUserHandler) Handle(ctx context.Context, params RegisterUserPar
 	if err := h.UserRepo.CreateUser(ctx, newUser); err != nil {
 		return uuid.Nil, err // Returns mapped domain error
 	}
+	// 🔐 AUDIT EVENT
+	event := &audit.AuditEvent{
+		ID:          uuid.New(),
+		ActorUserID: &newUser.UserID,
+		Action:      "USER_REGISTERED",
+		CreatedAt:   time.Now().UTC(),
+	}
+
+	_ = h.auditRepo.Append(ctx, event)
 
 	return newUser.UserID, nil
 }

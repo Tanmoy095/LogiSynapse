@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/audit"
 	domainError "github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/errors"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/tenant"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/ports/repository"
@@ -15,24 +16,38 @@ import (
 CREATE TENANT — PLATFORM COMMAND
 
 Golden Rules enforced:
-1. Only SUPER ADMINS can create tenants
-2. Ownership is a PROPERTY of the tenant
+
+Only SUPER ADMINS can create tenant by 2 rules
+
+Rule A-->User → RequestTenantCmd .Super Admin → Approve / Reject
+Owner is automatically the requester.
+
+
+Rule B-->.without any user request. Platform Provisioning.. In this we will implement rule B
+in this method
+No user request needed
+Super Admin → CreateTenantCmd
+Owner and tenant name are explicitly chosen by super admin.
+
 3. No membership is created for the owner
 */
 
-type CreateTenantHandler struct {
+type CreateTenantCmdByPlatform struct {
 	// Implementation pending
 	userRepo   repository.UserStore
 	tenantRepo repository.TenantStore
+	auditRepo  repository.AuditStore
 }
 
-func NewCreateTenantHandler(
+func NewCreateTenantCmdByPlatform(
 	userRepo repository.UserStore,
 	tenantRepo repository.TenantStore,
-) *CreateTenantHandler {
-	return &CreateTenantHandler{
+	auditRepo repository.AuditStore,
+) *CreateTenantCmdByPlatform {
+	return &CreateTenantCmdByPlatform{
 		userRepo:   userRepo,
 		tenantRepo: tenantRepo,
+		auditRepo:  auditRepo,
 	}
 }
 
@@ -43,7 +58,7 @@ type CreateTenantParams struct {
 	OwnerUserID       uuid.UUID // Who will own the tenant
 }
 
-func (h *CreateTenantHandler) Handle(ctx context.Context, params CreateTenantParams) (uuid.UUID, error) {
+func (h *CreateTenantCmdByPlatform) Handle(ctx context.Context, params CreateTenantParams) (uuid.UUID, error) {
 	// 1. Enforce Rule 1: Platform Authority
 	// "Only SUPER ADMINS can create tenants"
 	if !params.IsActorSuperAdmin {
@@ -74,6 +89,22 @@ func (h *CreateTenantHandler) Handle(ctx context.Context, params CreateTenantPar
 	}
 	//  (Future) Publish "TenantCreated" event for Billing Service via Kafka
 	// (Future) Emit TenantCreated event
+
+	// 🔐 AUDIT EVENT
+	event := &audit.AuditEvent{
+		ID:          uuid.New(),
+		ActorUserID: &params.ActorUserID,
+		TenantID:    &newTenant.TenantID,
+		Action:      "TENANT_CREATED_BY_PLATFORM",
+		TargetID:    &newTenant.TenantID,
+		Metadata: map[string]any{
+			"tenant_name": newTenant.TenantName,
+			"owner_id":    newTenant.OwnerUserID,
+		},
+		CreatedAt: time.Now().UTC(),
+	}
+
+	_ = h.auditRepo.Append(ctx, event) // audit failure should NOT block creation
 
 	return newTenant.TenantID, nil
 }

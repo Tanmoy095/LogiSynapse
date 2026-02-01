@@ -19,3 +19,37 @@ type AuditEvent struct {
 	Metadata    map[string]any
 	CreatedAt   time.Time
 }
+
+/*Audit logs are:
+write-only, append-only immutable
+
+ The Golden Audit Rule
+Every successful state-changing command that affects security, authority, or ownership MUST emit exactly one audit event.
+Not:
+controllers
+repositories
+domain entities
+
+Application Commands emit audit events
+This keeps:
+domain pure
+infra dumb
+audit complete
+
+Where to emit audit events (exact places)
+🔴 NEVER audit:
+Reads
+Failed authorization
+Validation errors
+✅ ALWAYS audit:
+Tenant approved
+Tenant rejected/request
+Tenant created (platform)
+Ownership transferred
+Member invited / revoked/accept
+User login (success)
+User registration (optional, but common)
+
+
+Super admin actions
+*/

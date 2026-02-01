@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/audit"
 	domainErr "github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/errors"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/membership"
 
@@ -24,10 +25,11 @@ Golden Rules enforced:
 
 type AcceptInvitationCmd struct {
 	membershipRepo repository.MemberShipStore
+	auditRepo      repository.AuditStore
 }
 
-func NewAcceptInvitationCmd(r repository.MemberShipStore) *AcceptInvitationCmd {
-	return &AcceptInvitationCmd{membershipRepo: r}
+func NewAcceptInvitationCmd(r repository.MemberShipStore, a repository.AuditStore) *AcceptInvitationCmd {
+	return &AcceptInvitationCmd{membershipRepo: r, auditRepo: a}
 }
 
 func (c *AcceptInvitationCmd) Handle(ctx context.Context, userID, tenantID uuid.UUID) error {
@@ -47,9 +49,31 @@ func (c *AcceptInvitationCmd) Handle(ctx context.Context, userID, tenantID uuid.
 	case membership.StatusPending:
 		member.MemberShipStatus = membership.StatusActive
 		member.UpdatedAt = time.Now().UTC()
-		return c.membershipRepo.UpdateMembershipStatus(ctx, member)
+
+		if err := c.membershipRepo.UpdateMembershipStatus(ctx, member); err != nil {
+			return err
+		}
+
+		// 🔐 AUDIT EVENT
+		event := &audit.AuditEvent{
+			ID:          uuid.New(),
+			ActorUserID: &userID,
+			TenantID:    &tenantID,
+			Action:      "MEMBERSHIP_ACCEPTED",
+			TargetID:    &userID,
+			Metadata: map[string]any{
+				"role": member.MemberShipRole,
+			},
+			CreatedAt: time.Now().UTC(),
+		}
+
+		_ = c.auditRepo.Append(ctx, event)
+		return nil
 
 	default:
 		return domainErr.ErrInvalidState
 	}
+	// FUTURE:
+	// - Emit MembershipActivated event
+
 }

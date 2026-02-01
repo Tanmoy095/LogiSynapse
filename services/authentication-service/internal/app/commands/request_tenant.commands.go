@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/audit"
 	domainErr "github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/errors"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/tenant"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/ports/repository"
@@ -16,15 +17,19 @@ import (
 type ReqTenantCmd struct {
 	userRepo   repository.UserStore
 	reqTntRepo repository.TenantRequestStore
+	auditRepo  repository.AuditStore
 }
 
 func NewReqTenantCmd(
 	userRepo repository.UserStore,
 	reqTntRepo repository.TenantRequestStore,
+	auditRepo repository.AuditStore,
+
 ) *ReqTenantCmd {
 	return &ReqTenantCmd{
 		userRepo:   userRepo,
 		reqTntRepo: reqTntRepo,
+		auditRepo:  auditRepo,
 	}
 }
 
@@ -62,6 +67,21 @@ func (cmd *ReqTenantCmd) Handle(ctx context.Context, params reqTntParams) (uuid.
 	if err := cmd.reqTntRepo.CreateTntRequest(ctx, newReq); err != nil {
 		return uuid.Nil, err
 	}
+
+	// 🔐 AUDIT EVENT
+	event := &audit.AuditEvent{
+		ID:          uuid.New(),
+		ActorUserID: &params.actorUserID,
+		Action:      "TENANT_REQUEST_CREATED",
+		TargetID:    &newReq.ID,
+		Metadata: map[string]any{
+			"desired_name": params.DesiredTntName,
+		},
+		CreatedAt: time.Now().UTC(),
+	}
+
+	_ = cmd.auditRepo.Append(ctx, event)
+
 	return newReq.ID, nil
 
 }

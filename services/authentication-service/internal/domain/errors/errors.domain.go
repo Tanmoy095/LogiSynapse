@@ -31,4 +31,6 @@ var (
 	ErrRequestNotFound       = errors.New("tenant request not found")
 	ErrInvalidState          = errors.New("operation not allowed in current state")
 	ErrUserNotActive         = errors.New("user account is not active")
+	ErrUnauthorizedAction    = errors.New("user is not authorized to perform this action")
+	ErrRequestNotPending     = errors.New("Request Not Pending ")
 )

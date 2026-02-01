@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/audit"
 	domainError "github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/errors"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/membership"
 	"github.com/Tanmoy095/LogiSynapse/services/authentication-service/internal/domain/policy"
@@ -20,14 +21,16 @@ type AddMembershipCmd struct {
 	userRepo       repository.UserStore
 	tenantRepo     repository.TenantStore
 	membershipRepo repository.MemberShipStore
+	auditRepo      repository.AuditStore
 }
 
 func NewAddMembershipCmd(
 	u repository.UserStore,
 	t repository.TenantStore,
 	m repository.MemberShipStore,
+	a repository.AuditStore,
 ) *AddMembershipCmd {
-	return &AddMembershipCmd{u, t, m}
+	return &AddMembershipCmd{u, t, m, a}
 }
 
 type AddMembershipParams struct {
@@ -114,6 +117,29 @@ func (h *AddMembershipCmd) Handle(ctx context.Context, params AddMembershipParam
 		UpdatedAt:        time.Now().UTC(),
 	}
 
-	return h.membershipRepo.CreateMembership(ctx, invite)
+	if err := h.membershipRepo.CreateMembership(ctx, invite); err != nil {
+		return err
+	}
+
+	// 🔐 AUDIT EVENT
+	event := &audit.AuditEvent{
+		ID:          uuid.New(),
+		ActorUserID: &params.ActorUserID,
+		TenantID:    &params.TenantID,
+		Action:      "MEMBERSHIP_INVITED",
+		TargetID:    &invite.UserID,
+		Metadata: map[string]any{
+			"role":  invite.MemberShipRole,
+			"email": params.TargetUserEmail,
+		},
+		CreatedAt: time.Now().UTC(),
+	}
+
+	_ = h.auditRepo.Append(ctx, event)
+	return nil
+
+	// FUTURE:
+	// - Emit MembershipInvited event
+	// - Send invite email
 
 }
