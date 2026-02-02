@@ -17,4 +17,9 @@ type MemberShipStore interface {
 	ListMembersByUserID(ctx context.Context, userID uuid.UUID) ([]*membership.MemberShip, error)
 	GetMember(ctx context.Context, userID, tenantID uuid.UUID) (*membership.MemberShip, error)
 	UpdateMemberRole(ctx context.Context, userID, tenantID uuid.UUID, role membership.Role) error
+	// UpsertMembership is CRITICAL for Step 2.
+	// Logic: If (user_id, tenant_id) exists, update Role/Status. If not, Insert.
+	// Why? The old owner might already have a membership row (ignored by policy) or might not.
+	// We need to force them to be an Admin in one atomic call.
+	UpsertMembership(ctx context.Context, membership *membership.MemberShip) error
 }
