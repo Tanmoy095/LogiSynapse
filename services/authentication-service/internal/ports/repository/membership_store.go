@@ -15,7 +15,7 @@ type MemberShipStore interface {
 	UpdateMembershipStatus(ctx context.Context, membership *membership.MemberShip) error
 	GetMembersByTenantID(ctx context.Context, tenantID uuid.UUID) ([]membership.MemberShip, error)
 	ListMembersByUserID(ctx context.Context, userID uuid.UUID) ([]*membership.MemberShip, error)
-	GetMember(ctx context.Context, userID, tenantID uuid.UUID) (*membership.MemberShip, error)
+	GetMember(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID) (*membership.MemberShip, error)
 	UpdateMemberRole(ctx context.Context, userID, tenantID uuid.UUID, role membership.Role) error
 	// UpsertMembership is CRITICAL for Step 2.
 	// Logic: If (user_id, tenant_id) exists, update Role/Status. If not, Insert.

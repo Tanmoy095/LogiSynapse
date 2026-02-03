@@ -33,4 +33,7 @@ var (
 	ErrUserNotActive         = errors.New("user account is not active")
 	ErrUnauthorizedAction    = errors.New("user is not authorized to perform this action")
 	ErrRequestNotPending     = errors.New("Request Not Pending ")
+	ErrCannotRevokeOwner     = errors.New("cannot revoke tenant owner (transfer ownership first)")
+	ErrCannotRevokeSelf      = errors.New("cannot revoke yourself (use leave tenant)")
+	ErrInsufficientPrivilege = errors.New("insufficient privileges to revoke this user")
 )

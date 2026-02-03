@@ -120,7 +120,7 @@ func (cmd *TransTntOwnership) Handle(ctx context.Context, params TransferOwnersh
 			UpdatedAt:        time.Now().UTC(),
 		}
 		//UpsertMembership must handle "ON CONFLICT (user_id, tenant_id) DO UPDATE"
-		if err := cmd.membershipRepo.UpsertMembership(ctx, oldOwnerMembership); err != nil {
+		if err := cmd.membershipRepo.UpsertMembership(txCtx, oldOwnerMembership); err != nil {
 			return fmt.Errorf("failed to downgrade old owner: %w", err)
 		}
 		// Note: We do NOT need to touch the New Owner's membership.
