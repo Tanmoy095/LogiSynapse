@@ -226,7 +226,7 @@ Contributions are welcome! Please follow conventional commit messages and add te
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the  GPLv3 license - see the [LICENSE](LICENSE) file for details.
 
 ---
 
