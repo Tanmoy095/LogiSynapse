@@ -137,3 +137,8 @@ services/*/*/go.mod
 services/*/*/go.sum
 shared/go.mod
 shared/go.sum
+
+# Keep generated docs, graph exports, and GitHub workflow files out of commits
+/docs/
+/graphify-out/
+/.github/

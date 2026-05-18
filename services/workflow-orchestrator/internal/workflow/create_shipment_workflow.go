@@ -10,9 +10,8 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-// CreateShimentWorkflow is the Clipboard/Blueprint
-
-func CreateShimentWorkflow(ctx workflow.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
+// CreateShipmentWorkflow orchestrates shipment creation activities.
+func CreateShipmentWorkflow(ctx workflow.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
 
 	//Configure Retries
 	//If shipoo or db is down retry for up to 10 minutes then backoff

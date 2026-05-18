@@ -1,115 +1,65 @@
 # LogiSynapse
 
-> **Modern, event-driven shipment and billing platform with distributed workflow orchestration**
+> Modern, event-driven shipment and billing platform with distributed workflow orchestration.
 
-LogiSynapse is a production-grade microservices platform built with **Go**, **gRPC**, **GraphQL**, **Temporal.io**, and **PostgreSQL**. It demonstrates enterprise-grade patterns for logistics and billing operations, including workflow orchestration, event-driven architecture, and third-party API integration (Shippo, Stripe).
+LogiSynapse is an AI-native distributed logistics intelligence platform that combines production-grade backend engineering with practical AI systems engineering.
 
----
+LogiSynapse is a logistics operating system for merchants, operators, support teams, finance teams, and engineering teams. It manages the full shipment lifecycle: merchant order -> shipment creation -> carrier selection -> label generation -> tracking updates -> delay and exception handling -> customer notifications -> usage billing -> operational analytics -> AI-assisted decisions.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
 - [Service Domains](#service-domains)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
 - [API Documentation](#api-documentation)
-- [Development & Testing](#development--testing)
-- [Roadmap](#roadmap)
+- [Development and Testing](#development-and-testing)
+- [Roadmap Highlights](#roadmap-highlights)
 - [Contributing](#contributing)
 - [License](#license)
 
----
-
 ## Architecture Overview
 
-LogiSynapse is designed as a set of loosely coupled microservices, each responsible for a distinct domain:
+LogiSynapse is designed around clear, loosely coupled planes that separate product concerns, data ownership, orchestration, and intelligence.
 
-### Shipment Service
+### Key Features
 
-- **gRPC API** for shipment creation, updates, and tracking
-- **Business Logic**: Validates requests, integrates with Shippo API, persists to Postgres, publishes Kafka events
-- **Entrypoint**: `cmd/main.go`
-- **Config**: Reads DB and Shippo API keys from environment
-- **Persistence**: `store/postgres.go` implements CRUD for shipments
-- **Eventing**: Publishes `shipment.created` events via Kafka
+- Event-driven architecture with transactional outbox and Kafka for replayable domain events
+- Durable workflow orchestration using Temporal for long-running, retryable processes
+- AI-native capabilities including retrieval, RAG, typed tools, and audited AI workflows
+- Microservices design with clear bounded contexts for order, tracking, billing, notifications, and AI
+- Observability and auditability with OpenTelemetry, metrics, traces, and a full audit trail
+- Production patterns such as idempotency, retries, compensation, and strong testing boundaries
 
-### Workflow Orchestrator
+### Architecture Planes
 
-- **Temporal Worker**: Executes long-running workflows (e.g., shipment creation, billing)
-- **Activities**: Shippo API calls, DB persistence, Kafka publishing
-- **Workflow Definitions**: `internal/workflow/create_shipment_workflow.go`
-- **Entrypoint**: `cmd/main.go` with dependency injection
-- **Retry Logic**: Exponential backoff, activity timeouts, audit trail
+- Product plane: API gateway, order, tracking, support, dispatch
+- Data plane: PostgreSQL, Redis, Kafka, vector DB for durable facts and read models
+- Workflow plane: Temporal workers and orchestrators for durable business processes
+- Intelligence plane: AI gateway, model gateway, retrieval, tool-service, and eval pipelines
 
-### GraphQL Gateway
+### Core Flow Examples
 
-- **GraphQL API**: Exposes unified API for clients
-- **Resolvers**: Map GraphQL requests to gRPC calls
-- **Entrypoint**: `cmd/main.go`
-- **Schema**: Defined in `graph/schema/schema.graphqls`
-- **Client**: gRPC client for shipment-service
-- **Models**: Internal models for transport and conversion
-
-### Communications Service
-
-- **Kafka Consumer**: Listens for shipment events
-- **RabbitMQ Producer**: Dispatches notification tasks (email, SMS)
-- **Worker Pools**: Concurrent processing for notifications
-- **Entrypoint**: `cmd/main.go`
-
-### Billing Service
-
-- **Accounts & Payments**: Stripe integration, account management
-- **Usage Aggregation**: Tracks billable actions, concurrency-safe
-- **Ledger & Invoicing**: Complete financial audit trail, invoice generation, state management
-- **Pricing Engine**: Tiered and historical pricing rules
-- **API**: Read-only endpoints for usage, invoices, ledger
-- **Config**: Secure loading of secrets and keys
-
----
+- Order write: API -> order-service -> Postgres + outbox -> outbox relay -> Kafka -> downstream consumers
+- Tracking read: API -> tracking-service -> Redis cache -> Postgres fallback
+- AI assistant: ai-gateway -> retrieval -> model -> typed tools -> validated, cited response
 
 ## Service Domains
 
-### Shipment Service
-
-- Handles shipment lifecycle: create, update, cancel, track
-- Integrates with Shippo for label generation and tracking
-- Publishes events for downstream consumers
-- Ensures idempotency and auditability
-
-### Workflow Orchestrator
-
-- Orchestrates multi-step business processes
-- Ensures atomicity and reliability across external APIs, DB, and eventing
-- Provides workflow history and compensation logic
-
-### GraphQL Gateway
-
-- Presents a type-safe, client-friendly API
-- Handles request validation, enum conversion, and error mapping
-- Bridges frontend and backend services
-
-### Communications Service
-
-- Consumes shipment events
-- Translates events into notification tasks
-- Supports email and SMS delivery via RabbitMQ
-- Graceful shutdown and worker management
-
-### Billing Service
-
-- Manages tenant accounts, payment methods, and Stripe customers
-- Aggregates usage events for billing
-- Maintains a ledger with full transaction metadata
-- Generates invoices with legal compliance (quantity, unit price, currency)
-- Enforces state transitions and immutability for finalized invoices
-- Exposes billing API for usage, invoices, and ledger views
-
----
+| Service | Responsibility | Primary Integrations |
+|---|---|---|
+| api-gateway | Public API surface, auth, rate limits | GraphQL / REST |
+| order-service | Accept orders, outbox, idempotency | Postgres, Kafka |
+| tracking-service | Shipment timeline and read models | Redis, Postgres |
+| workflow-service | Temporal workflows and retries | Temporal, Shippo |
+| billing-service | Usage aggregation, ledger, invoices | Stripe, Postgres |
+| notification-service | Email, SMS, webhooks | RabbitMQ, SQS |
+| ai-gateway | Tenant AI requests, quotas, streaming | model-gateway, retrieval |
+| retrieval-service | Embeddings and hybrid search | pgvector / Qdrant |
 
 ## Project Structure
 
-```
+```text
 LogiSynapse/
 ├── services/
 │   ├── shipment-service/
@@ -117,117 +67,228 @@ LogiSynapse/
 │   ├── graphql-gateway/
 │   ├── communications-service/
 │   └── billing-service/
-│       ├── db/migrations/
-│       ├── internal/
-│       │   ├── accounts/
-│       │   ├── billing/
-│       │   ├── billingTypes/
-│       │   ├── config/
-│       │   ├── invoice/
-│       │   ├── ledger/
-│       │   ├── payment/
-│       │   ├── pricing/
-│       │   ├── store/
-│       │   └── usage/
 ├── shared/
-│   ├── proto/
-│   ├── contracts/
-│   ├── config/
-│   ├── kafka/
-│   └── rabbitmq/
-├── doc/
+├── docs/
+├── graphify-out/
 ├── docker-compose.yml
-├── projectsummary.md
-├── implementation-plan.md
-├── LICENSE
 └── README.md
 ```
-
----
 
 ## Getting Started
 
 ### Prerequisites
 
-- **Go 1.24+**
-- **Docker & Docker Compose**
-- **Shippo API Key** (for shipment service)
-- **Stripe API Key** (for billing service)
+- Go 1.24+
+- Docker and Docker Compose
+- Shippo API key for shipment workflows
+- Stripe API key for billing workflows
 
 ### Quick Start
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Tanmoy095/LogiSynapse.git
-   cd LogiSynapse
-   ```
-2. **Create a `.env` file** in the root (see projectsummary.md for required variables)
-3. **Start all services**
-   ```bash
-   docker-compose up --build
-   ```
-4. **Access services**
-   - GraphQL Playground: http://localhost:8080/
-   - Temporal Web UI: http://localhost:8088/
-   - RabbitMQ Management: http://localhost:15672/
-   - Shipment Service (gRPC): localhost:50051
-   - Billing Service: see internal API docs
+1. Clone the repository.
 
----
+	```bash
+	git clone https://github.com/Tanmoy095/LogiSynapse.git
+	cd LogiSynapse
+	```
+
+2. Create a `.env` file in the project root with the required database and integration settings.
+
+3. Start the local stack.
+
+	```bash
+	docker compose up --build
+	```
+
+
+### GraphQL API
+
+- Mutations: `createShipment`, `updateShipment`, and related workflow actions
+- Queries: `shipments`, `usageSummary`, `invoiceHistory`
+
+### gRPC API
+
+- ShipmentService: `CreateShipment`, `GetShipments`
+- BillingService: `GetInvoices`, `CreateInvoice`, `FinalizeInvoice`
+
+### Billing API
+
+- Usage summary by tenant, period, and type
+- Invoice history and invoice details
+- Ledger views for transaction-level auditability
+
+## Development and Testing
+
+- Run tests:
+
+  ```bash
+  go test ./...
+  ```
+
+- Database migrations are managed with Goose under service migration folders.
+- Regenerate proto and GraphQL artifacts after schema changes.
+- Keep health checks and observability hooks in place for each service.
+- Use OpenTelemetry for traces and metrics across the stack.
+
+## Roadmap Highlights
+
+- Add Kafka to local compose for end-to-end event testing
+- Expand unit, integration, and E2E coverage
+- Strengthen logging, tracing, and AI evaluation pipelines
+# LogiSynapse
+
+> Modern, event-driven shipment and billing platform with distributed workflow orchestration.
+
+LogiSynapse is an AI-native distributed logistics intelligence platform that combines production-grade backend engineering with practical AI systems engineering.
+
+LogiSynapse is a logistics operating system for merchants, operators, support teams, finance teams, and engineering teams. It manages the full shipment lifecycle: merchant order -> shipment creation -> carrier selection -> label generation -> tracking updates -> delay and exception handling -> customer notifications -> usage billing -> operational analytics -> AI-assisted decisions.
+
+## Table of Contents
+
+- [Architecture Overview](#architecture-overview)
+- [Service Domains](#service-domains)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [API Documentation](#api-documentation)
+- [Development and Testing](#development-and-testing)
+- [Roadmap Highlights](#roadmap-highlights)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Architecture Overview
+
+LogiSynapse is designed around clear, loosely coupled planes that separate product concerns, data ownership, orchestration, and intelligence.
+
+### Key Features
+
+- Event-driven architecture with transactional outbox and Kafka for replayable domain events
+- Durable workflow orchestration using Temporal for long-running, retryable processes
+- AI-native capabilities including retrieval, RAG, typed tools, and audited AI workflows
+- Microservices design with clear bounded contexts for order, tracking, billing, notifications, and AI
+- Observability and auditability with OpenTelemetry, metrics, traces, and a full audit trail
+- Production patterns such as idempotency, retries, compensation, and strong testing boundaries
+
+### Architecture Planes
+
+- Product plane: API gateway, order, tracking, support, dispatch
+- Data plane: PostgreSQL, Redis, Kafka, vector DB for durable facts and read models
+- Workflow plane: Temporal workers and orchestrators for durable business processes
+- Intelligence plane: AI gateway, model gateway, retrieval, tool-service, and eval pipelines
+
+### Core Flow Examples
+
+- Order write: API -> order-service -> Postgres + outbox -> outbox relay -> Kafka -> downstream consumers
+- Tracking read: API -> tracking-service -> Redis cache -> Postgres fallback
+- AI assistant: ai-gateway -> retrieval -> model -> typed tools -> validated, cited response
+
+## Service Domains
+
+| Service | Responsibility | Primary Integrations |
+|---|---|---|
+| api-gateway | Public API surface, auth, rate limits | GraphQL / REST |
+| order-service | Accept orders, outbox, idempotency | Postgres, Kafka |
+| tracking-service | Shipment timeline and read models | Redis, Postgres |
+| workflow-service | Temporal workflows and retries | Temporal, Shippo |
+| billing-service | Usage aggregation, ledger, invoices | Stripe, Postgres |
+| notification-service | Email, SMS, webhooks | RabbitMQ, SQS |
+| ai-gateway | Tenant AI requests, quotas, streaming | model-gateway, retrieval |
+| retrieval-service | Embeddings and hybrid search | pgvector / Qdrant |
+
+## Project Structure
+
+```text
+LogiSynapse/
+├── services/
+│   ├── shipment-service/
+│   ├── workflow-orchestrator/
+│   ├── graphql-gateway/
+│   ├── communications-service/
+│   └── billing-service/
+├── shared/
+├── docs/
+├── graphify-out/
+├── docker-compose.yml
+└── README.md
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Go 1.24+
+- Docker and Docker Compose
+- Shippo API key for shipment workflows
+- Stripe API key for billing workflows
+
+### Quick Start
+
+1. Clone the repository.
+
+	```bash
+	git clone https://github.com/Tanmoy095/LogiSynapse.git
+	cd LogiSynapse
+	```
+
+2. Create a `.env` file in the project root with the required database and integration settings.
+
+3. Start the local stack.
+
+	```bash
+	docker compose up --build
+	```
+
+4. Open the local tools.
+
+	- GraphQL Playground: http://localhost:8080/
+	- Temporal Web UI: http://localhost:8088/
+	- RabbitMQ Management: http://localhost:15672/
 
 ## API Documentation
 
-### GraphQL API (Port 8080)
+### GraphQL API
 
-- **Mutations**: `createShipment`, `updateShipment`, etc.
-- **Queries**: `shipments`, `usageSummary`, `invoiceHistory`
+- Mutations: `createShipment`, `updateShipment`, and related workflow actions
+- Queries: `shipments`, `usageSummary`, `invoiceHistory`
 
-### gRPC API (Port 50051)
+### gRPC API
 
-- **ShipmentService**: `GetShipments`, `CreateShipment`
-- **BillingService**: `GetInvoices`, `CreateInvoice`, `FinalizeInvoice`, etc.
+- ShipmentService: `CreateShipment`, `GetShipments`
+- BillingService: `GetInvoices`, `CreateInvoice`, `FinalizeInvoice`
 
-### Billing API (Internal)
+### Billing API
 
-- **Usage Summary**: Aggregated usage per tenant/month/type
-- **Invoice History**: List and details of invoices
-- **Ledger View**: Transaction-level audit trail
+- Usage summary by tenant, period, and type
+- Invoice history and invoice details
+- Ledger views for transaction-level auditability
 
----
+## Development and Testing
 
-## Development & Testing
+- Run tests:
 
-- **Run Unit Tests**: `go test ./...`
-- **Database Migrations**: Managed via Goose; see `db/migrations/`
-- **Code Generation**: Regenerate proto and GraphQL code after schema changes
-- **Mocking & Interfaces**: Consumer-defined interfaces for easy mocking in tests
-- **Healthchecks**: All services implement readiness checks for orchestration
-- **Error Handling**: Structured error mapping and logging throughout
+  ```bash
+  go test ./...
+  ```
 
----
+- Database migrations are managed with Goose under service migration folders.
+- Regenerate proto and GraphQL artifacts after schema changes.
+- Keep health checks and observability hooks in place for each service.
+- Use OpenTelemetry for traces and metrics across the stack.
 
-## Roadmap
+## Roadmap Highlights
 
-- Add Kafka broker to docker-compose
-- Expand test coverage (unit, integration, E2E)
-- Implement structured logging and distributed tracing
-- Add authentication/authorization to GraphQL Gateway
-- Enhance billing API with write endpoints and webhook support
-- Add CI/CD pipeline and Makefile for common tasks
-- Improve observability and metrics
-
----
+- Add Kafka to local compose for end-to-end event testing
+- Expand unit, integration, and E2E coverage
+- Strengthen logging, tracing, and AI evaluation pipelines
+- Harden the gateway with authentication and authorization
+- Add CI/CD, Makefile tasks, and deployment manifests
 
 ## Contributing
 
-Contributions are welcome! Please follow conventional commit messages and add tests for new features. See projectsummary.md for architectural guidelines.
-
----
+- Follow conventional commits.
+- Keep changes small and focused on one responsibility.
+- Add tests and documentation for new behavior.
+- Document tradeoffs and failure modes for architecture changes.
 
 ## License
 
-This project is licensed under the  GPLv3 license - see the [LICENSE](LICENSE) file for details.
-
----
-
-**Built with ❤️ using Go, Temporal.io, and modern microservices patterns**
+GPLv3 - see the [LICENSE](LICENSE) file for details.

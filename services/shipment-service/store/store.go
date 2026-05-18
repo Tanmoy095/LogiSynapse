@@ -22,5 +22,8 @@ type ShipmentStore interface {
 
 	// CreateShipment adds a new shipment to the store.
 	CreateShipment(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error)
+	CreateShipmentWithOutbox(ctx context.Context, shipment contracts.Shipment, eventKey string, eventPayload []byte) (contracts.Shipment, error)
 	UpdateShipment(ctx context.Context, shipment contracts.Shipment) error
+	PopPendingOutboxEvent(ctx context.Context, aggregateID string) (string, []byte, error)
+	MarkOutboxEventPublished(ctx context.Context, eventID string) error
 }

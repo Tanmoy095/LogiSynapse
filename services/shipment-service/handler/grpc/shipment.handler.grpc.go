@@ -90,17 +90,21 @@ func toProtoShipment(s models.Shipment) *proto.Shipment {
 // toModelShipment converts a gRPC proto.CreateShipmentRequest to an internal models.Shipment.
 // It generates a unique ID for the new shipment since the request doesn't include one.
 func toModelShipment(req *proto.CreateShipmentRequest) models.Shipment {
+	carrier := models.Carrier{}
+	if req.Carrier != nil {
+		carrier = models.Carrier{
+			Name:        req.Carrier.Name,
+			TrackingURL: req.Carrier.TrackingUrl,
+		}
+	}
 	return models.Shipment{
-		// Generate a unique ID for the shipment
+		// ID is assigned by Shippo + DB write in workflow activities.
 		ID:          "",
 		Origin:      req.Origin,
 		Destination: req.Destination,
 		Eta:         req.Eta,
 		Status:      req.Status,
-		Carrier: models.Carrier{
-			Name:        req.Carrier.Name,
-			TrackingURL: req.Carrier.TrackingUrl,
-		},
+		Carrier:     carrier,
 	}
 }
 

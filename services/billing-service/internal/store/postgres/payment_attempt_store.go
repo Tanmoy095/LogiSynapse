@@ -67,7 +67,7 @@ func (pa *PaymentAttemptStore) UpdateAttemptStatus(ctx context.Context, attemptI
 // GetPendingAttempts helps in fetching payment attempts that are still in PENDING status
 //
 //	for longer than the specified duration.
-func (pa *PaymentAttemptStore) GetPendingAttempts(ctx context.Context, limit int, olderThan time.Duration) ([]payment.PaymentAttempt, error) {
+func (pa *PaymentAttemptStore) GetPendingAttempts(ctx context.Context, limit int, olderThan time.Duration) ([]*payment.PaymentAttempt, error) {
 	// Logic: Find PENDING items created BEFORE (Now - 5 minutes)
 	cutOffTime := time.Now().Add(-olderThan) // Calculate cutoff time
 	query := `
@@ -83,9 +83,9 @@ func (pa *PaymentAttemptStore) GetPendingAttempts(ctx context.Context, limit int
 	}
 	defer rows.Close()
 
-	var attempts []payment.PaymentAttempt
+	var attempts []*payment.PaymentAttempt
 	for rows.Next() {
-		var paymentAttempt payment.PaymentAttempt
+		paymentAttempt := &payment.PaymentAttempt{}
 		var providerPaymentID sql.NullString // Handle nullable field . it helps in scanning nullable string from db
 		err := rows.Scan(
 			&paymentAttempt.AttemptID,

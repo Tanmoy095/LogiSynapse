@@ -12,6 +12,7 @@ import (
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 
 	"github.com/Tanmoy095/LogiSynapse/services/graphql-gateway/graph/model" // Generated GraphQL models
+	"go.opentelemetry.io/otel"
 )
 
 // Mutation returns the MutationResolver implementation.
@@ -46,6 +47,9 @@ func ToProtoShipmentStatus(s string) proto.ShipmentStatus {
 	}
 }
 func (r *mutationResolver) CreateShipment(ctx context.Context, input model.NewShipmentInput) (*model.Shipment, error) {
+	ctx, span := otel.Tracer("graphql-gateway").Start(ctx, "mutation.CreateShipment")
+	defer span.End()
+
 	// Convert GraphQL input (model.NewShipmentInput) to local model (models.Shipment)
 	shipment := models.Shipment{
 		Origin:      input.Origin,
@@ -86,6 +90,8 @@ type queryResolver struct{ *Resolver }
 // It calls the gRPC client with filters and pagination, preserving the original logic structure.
 // Analogy: Waiter takes a customer order (e.g., "shipments from Dhaka") and sends it to the kitchen.
 func (r *queryResolver) Shipments(ctx context.Context, origin *string, status *model.ShipmentStatus, destination *string, limit *int, offset *int) ([]*model.Shipment, error) {
+	ctx, span := otel.Tracer("graphql-gateway").Start(ctx, "query.Shipments")
+	defer span.End()
 	// Set default values for optional filters and pagination
 	o := ""
 	d := ""

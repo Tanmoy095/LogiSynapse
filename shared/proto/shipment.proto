@@ -1,7 +1,7 @@
 // proto/shipment.proto
 syntax = "proto3";
 
-option go_package = "github.com/Tanmoy095/LogiSynapse/graphql-gateway/proto";
+option go_package = "github.com/Tanmoy095/LogiSynapse/shared/proto;proto";
 
 package shipment;
 

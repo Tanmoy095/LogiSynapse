@@ -5,8 +5,11 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,6 +19,7 @@ import (
 	"github.com/Tanmoy095/LogiSynapse/shared/contracts"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
 	"go.temporal.io/sdk/client"
+	"go.opentelemetry.io/otel"
 )
 
 // ShipmentService handles business logic.
@@ -27,7 +31,13 @@ import (
 type ShipmentService struct {
 	store          store.ShipmentStore
 	temporalClient client.Client // <--- NEW: The connection to the Temporal Server
+	logger         *slog.Logger
 }
+
+const (
+	shipmentTaskQueue      = "SHIPMENT_TASK_QUEUE"
+	createShipmentWorkflow = "CreateShipmentWorkflow"
+)
 
 // NewShipmentService creates a new service.
 // We now pass the Temporal Client instead of the Kafka Producer.
@@ -35,12 +45,15 @@ func NewShipmentService(store store.ShipmentStore, temporalClient client.Client)
 	return &ShipmentService{
 		store:          store,
 		temporalClient: temporalClient,
+		logger:         slog.Default(),
 	}
 }
 
 // CreateShipment is the "Entry Point".
 // Instead of doing the work itself, it delegates everything to Temporal.
 func (s *ShipmentService) CreateShipment(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
+	ctx, span := otel.Tracer("shipment-service").Start(ctx, "ShipmentService.CreateShipment")
+	defer span.End()
 	// catch bad data *before* starting a workflow to save resources.
 	if shipment.Origin == "" || shipment.Destination == "" {
 		return contracts.Shipment{}, errors.New("missing required fields")
@@ -49,16 +62,18 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment contracts
 	// Define Workflow Options
 	// TaskQueue: This MUST match the queue name defined in your Worker (workflow-orchestrator/cmd/main.go).
 	// ID: We use the shipment ID (or generate one) to prevent duplicates (Deduping).
+	workflowID := "shipment-create-" + stableCreateKey(shipment)
 	workflowOptions := client.StartWorkflowOptions{
-		ID:        "shipment-create-" + shipment.ID,
-		TaskQueue: "SHIPMENT_TASK_QUEUE",
+		ID:        workflowID,
+		TaskQueue: shipmentTaskQueue,
 	}
 
 	// Execute the Workflow
 	//  We use 'ExecuteWorkflow' instead of 'SignalWithStart' because
 	// the gRPC client (frontend) is waiting for a response (the Tracking Number).
 	// This call sends the inputs to the Temporal Server.
-	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, "CreateShipmentWorkflow", shipment)
+	s.logger.InfoContext(ctx, "starting shipment create workflow", "workflow_id", workflowID, "origin", shipment.Origin, "destination", shipment.Destination)
+	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, createShipmentWorkflow, shipment)
 	if err != nil {
 		return contracts.Shipment{}, err
 	}
@@ -111,21 +126,10 @@ func (s *ShipmentService) Updateshipment(ctx context.Context, shipment contracts
 	}
 	//Execute Workflow (Worker handles DB Update + Kafka Event)
 
-	workflowOptions := client.StartWorkflowOptions{
-		ID:        "shipment-update-" + updatedShipment.ID,
-		TaskQueue: "SHIPMENT_TASK_QUEUE",
-	}
-
-	// Execute the Workflow
-	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, "UpdateShipmentWorkflow", updatedShipment)
-	if err != nil {
+	if err := s.store.UpdateShipment(ctx, updatedShipment); err != nil {
 		return contracts.Shipment{}, err
-
 	}
-	// 4. Wait for Result
-	var result contracts.Shipment
-	err = we.Get(ctx, &result)
-	return result, err
+	return updatedShipment, nil
 
 }
 
@@ -144,19 +148,8 @@ func (s *ShipmentService) DeleteShipment(ctx context.Context, id string) error {
 	if shipment.Status != proto.ShipmentStatus_PRE_TRANSIT {
 		return errors.New("can only delete PRE_TRANSIT shipments")
 	}
-	// Execute Workflow (Worker handles Shippo Void API + DB Update + Kafka Event)
-	workflowOptions := client.StartWorkflowOptions{
-		ID:        "shipment-cancel-" + id,
-		TaskQueue: "SHIPMENT_TASK_QUEUE",
-	}
-
-	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, "CancelShipmentWorkflow", shipment)
-	if err != nil {
-		return err
-	}
-
-	//Wait for Completion
-	return we.Get(ctx, nil)
+	shipment.Status = proto.ShipmentStatus_CANCELLED
+	return s.store.UpdateShipment(ctx, shipment)
 
 }
 
@@ -255,4 +248,10 @@ func ifZero(newValue, oldValue float64) float64 {
 		return newValue
 	}
 	return oldValue
+}
+
+func stableCreateKey(shipment contracts.Shipment) string {
+	raw := shipment.Origin + "|" + shipment.Destination + "|" + shipment.Eta + "|" + shipment.Carrier.Name
+	sum := sha1.Sum([]byte(raw))
+	return hex.EncodeToString(sum[:])
 }

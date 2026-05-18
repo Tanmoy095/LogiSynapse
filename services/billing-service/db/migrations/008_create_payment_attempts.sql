@@ -5,8 +5,8 @@
 -- One Invoice can have many Payment Attempts (e.g. failed retries).
 
 CREATE TABLE IF NOT EXISTS payment_attempts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    attempt_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    invoice_id UUID NOT NULL REFERENCES invoices(invoice_id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL,
     
    -- Who are we talking to?

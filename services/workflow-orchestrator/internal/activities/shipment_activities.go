@@ -8,9 +8,12 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/Tanmoy095/LogiSynapse/shared/contracts"
 	"github.com/Tanmoy095/LogiSynapse/shared/proto"
+	"go.opentelemetry.io/otel"
 )
 
 //Now we implement the actual work.
@@ -21,6 +24,9 @@ import (
 type ShipmentActivities struct {
 	Store interface {
 		CreateShipment(context.Context, contracts.Shipment) (contracts.Shipment, error)
+		CreateShipmentWithOutbox(context.Context, contracts.Shipment, string, []byte) (contracts.Shipment, error)
+		PopPendingOutboxEvent(context.Context, string) (string, []byte, error)
+		MarkOutboxEventPublished(context.Context, string) error
 	} // Interface!
 	Producer interface {
 		Publish(context.Context, string, interface{}) error
@@ -29,8 +35,22 @@ type ShipmentActivities struct {
 	Client    *http.Client
 }
 
+var shippoCircuit = struct {
+	mu               sync.Mutex
+	consecutiveFails int
+	openUntil        time.Time
+}{}
+
 // Activity 1: The External API Call
 func (a *ShipmentActivities) ACTIVITY_CallShippoAPI(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
+	ctx, span := otel.Tracer("workflow-orchestrator").Start(ctx, "ACTIVITY_CallShippoAPI")
+	defer span.End()
+	shippoCircuit.mu.Lock()
+	if time.Now().Before(shippoCircuit.openUntil) {
+		shippoCircuit.mu.Unlock()
+		return contracts.Shipment{}, errors.New("shippo circuit breaker open")
+	}
+	shippoCircuit.mu.Unlock()
 	// Basic validation
 	if shipment.Origin == "" || shipment.Destination == "" {
 		return contracts.Shipment{}, errors.New("missing required fields")
@@ -93,12 +113,26 @@ func (a *ShipmentActivities) ACTIVITY_CallShippoAPI(ctx context.Context, shipmen
 	//Gets Tracking Number status and Url
 	resp, err := a.Client.Do(req)
 	if err != nil {
+		shippoCircuit.mu.Lock()
+		shippoCircuit.consecutiveFails++
+		if shippoCircuit.consecutiveFails >= 5 {
+			shippoCircuit.openUntil = time.Now().Add(30 * time.Second)
+			shippoCircuit.consecutiveFails = 0
+		}
+		shippoCircuit.mu.Unlock()
 		return contracts.Shipment{}, errors.New("failed to call Shippo API: " + err.Error())
 
 	}
 	defer resp.Body.Close()
 	//Ensure and check Shipment creation Succeeded
 	if resp.StatusCode != http.StatusCreated {
+		shippoCircuit.mu.Lock()
+		shippoCircuit.consecutiveFails++
+		if shippoCircuit.consecutiveFails >= 5 {
+			shippoCircuit.openUntil = time.Now().Add(30 * time.Second)
+			shippoCircuit.consecutiveFails = 0
+		}
+		shippoCircuit.mu.Unlock()
 		return contracts.Shipment{}, errors.New("Shippo API error: status " + resp.Status)
 
 	}
@@ -136,6 +170,9 @@ func (a *ShipmentActivities) ACTIVITY_CallShippoAPI(ctx context.Context, shipmen
 	shipment.Weight = shipment.Weight
 	shipment.Unit = shipment.Unit
 
+	shippoCircuit.mu.Lock()
+	shippoCircuit.consecutiveFails = 0
+	shippoCircuit.mu.Unlock()
 	return shipment, nil
 }
 
@@ -159,16 +196,32 @@ func mapShippoStatusToProto(s string) proto.ShipmentStatus {
 
 // Activity 2: The DB Operation
 func (a *ShipmentActivities) ACTIVITY_SaveShipmentToDB(ctx context.Context, shipment contracts.Shipment) (contracts.Shipment, error) {
-	// Simple wrapper around your existing store logic
-	return a.Store.CreateShipment(ctx, shipment)
-}
-
-// Activity 3: The Event
-func (a *ShipmentActivities) ACTIVITY_PublishKafkaEvent(ctx context.Context, shipment contracts.Shipment) error {
+	ctx, span := otel.Tracer("workflow-orchestrator").Start(ctx, "ACTIVITY_SaveShipmentToDB")
+	defer span.End()
 	event := map[string]interface{}{
 		"event":   "shipment.created",
 		"payload": shipment,
 	}
-	// Note: We don't use 'go' routine here. Temporal handles the concurrency.
-	return a.Producer.Publish(ctx, shipment.ID, event)
+	eventPayload, err := json.Marshal(event)
+	if err != nil {
+		return contracts.Shipment{}, errors.New("failed to marshal outbox event: " + err.Error())
+	}
+	return a.Store.CreateShipmentWithOutbox(ctx, shipment, shipment.ID, eventPayload)
+}
+
+// Activity 3: The Event
+func (a *ShipmentActivities) ACTIVITY_PublishKafkaEvent(ctx context.Context, shipment contracts.Shipment) error {
+	ctx, span := otel.Tracer("workflow-orchestrator").Start(ctx, "ACTIVITY_PublishKafkaEvent")
+	defer span.End()
+	eventID, payload, err := a.Store.PopPendingOutboxEvent(ctx, shipment.ID)
+	if err != nil {
+		return err
+	}
+	if len(payload) == 0 {
+		return nil
+	}
+	if err := a.Producer.Publish(ctx, shipment.ID, json.RawMessage(payload)); err != nil {
+		return err
+	}
+	return a.Store.MarkOutboxEventPublished(ctx, eventID)
 }

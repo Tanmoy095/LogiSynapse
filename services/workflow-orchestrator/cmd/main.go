@@ -4,12 +4,14 @@ package main
 
 import (
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
+	temporalworkflow "go.temporal.io/sdk/workflow"
 
 	// 1. Local Imports (Workflow & Activities)
 	"github.com/Tanmoy095/LogiSynapse/services/workflow-orchestrator/internal/activities"
@@ -25,6 +27,9 @@ import (
 )
 
 func main() {
+	const taskQueue = "SHIPMENT_TASK_QUEUE"
+	const createWorkflowName = "CreateShipmentWorkflow"
+	logger := slog.Default()
 	// =========================================================================
 	// 1. LOAD CONFIG
 	// =========================================================================
@@ -39,6 +44,7 @@ func main() {
 	// We use cfg.GetDBURL() which comes from your shared/config package
 	shipmentStore, err := store.NewPostgresStore(cfg.GetDBURL())
 	if err != nil {
+		logger.Error("worker failed to connect to DB", "error", err)
 		log.Fatalf("Worker failed to connect to DB: %v", err)
 	}
 	defer shipmentStore.Close()
@@ -50,9 +56,9 @@ func main() {
 	if cfg.KAFKA_BROKER != "" && cfg.KAFKA_TOPIC != "" {
 		producer = pkgkafka.NewKafkaProducer(cfg.KAFKA_BROKER, cfg.KAFKA_TOPIC)
 		defer producer.Close()
-		log.Println("Worker connected to Kafka")
+		logger.Info("worker connected to kafka")
 	} else {
-		log.Println("Warning: Kafka config missing, worker will not publish events")
+		logger.Warn("kafka config missing, worker will not publish events")
 	}
 
 	// =========================================================================
@@ -71,7 +77,7 @@ func main() {
 		log.Fatalln("Unable to create Temporal client", err)
 	}
 	defer c.Close()
-	log.Println("Worker connected to Temporal at:", temporalHost)
+	logger.Info("worker connected to temporal", "host", temporalHost)
 
 	// =========================================================================
 	// 4. REGISTER ACTIVITIES & WORKFLOWS
@@ -86,11 +92,11 @@ func main() {
 	}
 
 	// Create the Worker listening to the specific Task Queue
-	w := worker.New(c, "SHIPMENT_TASK_QUEUE", worker.Options{})
+	w := worker.New(c, taskQueue, worker.Options{})
 
 	// 🚨 CRITICAL FIX: Register Workflow
 	// Do NOT call the function with (). Pass the function name only!
-	w.RegisterWorkflow(workflow.CreateShimentWorkflow)
+	w.RegisterWorkflowWithOptions(workflow.CreateShipmentWorkflow, temporalworkflow.RegisterOptions{Name: createWorkflowName})
 
 	// Register Activities
 	w.RegisterActivity(activityHost.ACTIVITY_CallShippoAPI)
@@ -100,7 +106,7 @@ func main() {
 	// =========================================================================
 	// 5. START WORKER
 	// =========================================================================
-	log.Println("Worker started. Pollers are running...")
+	logger.Info("worker started, pollers running")
 
 	err = w.Run(worker.InterruptCh())
 	if err != nil {

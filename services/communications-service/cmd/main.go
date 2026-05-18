@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -15,11 +16,15 @@ import (
 	"github.com/Tanmoy095/LogiSynapse/shared/config"
 	pkgkafka "github.com/Tanmoy095/LogiSynapse/shared/kafka"
 	pkgrabbit "github.com/Tanmoy095/LogiSynapse/shared/rabbitmq"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 const (
-	EmailQueue = "email_Jobs"
-	SMSQueue   = "sms_jobs"
+	EmailQueue        = "email_Jobs"
+	SMSQueue          = "sms_jobs"
+	EmailDLQ          = "email_jobs_dlq"
+	SMSDLQ            = "sms_jobs_dlq"
+	maxDeliveryReties = 3
 )
 
 func main() {
@@ -45,6 +50,12 @@ func main() {
 	}
 	if err := rabbitClient.CreateQueue(SMSQueue); err != nil {
 		log.Fatalf("Failed to create SMS queue: %v", err)
+	}
+	if err := rabbitClient.CreateQueue(EmailDLQ); err != nil {
+		log.Fatalf("Failed to create email DLQ: %v", err)
+	}
+	if err := rabbitClient.CreateQueue(SMSDLQ); err != nil {
+		log.Fatalf("Failed to create SMS DLQ: %v", err)
 	}
 
 	//Connect to Kafka (The News Ticker)
@@ -118,7 +129,15 @@ func main() {
 					// We walk over to the RabbitMQ Kitchen and drop this ticket in the 'EmailQueue'.
 					// NOTE: The 'Email Chef' (from Act 2) is watching this queue.
 					// He will see this ticket instantly!
-					if err := rabbitClient.Publish(ctx, EmailQueue, jsonData); err != nil {
+					idempotencyKey := string(key)
+					if idempotencyKey == "" {
+						idempotencyKey = fmt.Sprintf("shipment-%v", event["payload"])
+					}
+					wrappedEmail, err := wrapJobWithMeta(jsonData, idempotencyKey, 0)
+					if err != nil {
+						return err
+					}
+					if err := rabbitClient.Publish(ctx, EmailQueue, wrappedEmail); err != nil {
 						log.Printf("Bridge Dispatcher:Failed to publish email job:%v", err)
 						return err
 					}
@@ -131,7 +150,11 @@ func main() {
 					smsBody, _ := json.Marshal(smsJob)
 
 					// Publish to the SMS Queue
-					if err := rabbitClient.Publish(ctx, SMSQueue, smsBody); err != nil {
+					wrappedSMS, err := wrapJobWithMeta(smsBody, idempotencyKey, 0)
+					if err != nil {
+						return err
+					}
+					if err := rabbitClient.Publish(ctx, SMSQueue, wrappedSMS); err != nil {
 						// Senior Tip: If Email succeeded but SMS failed, do we fail everything?
 						// Ideally, yes, so Kafka retries. But we might send duplicate emails.
 						// For now, return error to be safe.
@@ -204,12 +227,9 @@ func startEmailWorker(ctx context.Context, client *pkgrabbit.RabbitmqClient, wg 
 
 			log.Printf("📧 Email Chef: I got a job! Payload: %s", string(d.Body))
 
-			// Simulate sending email to SendGrid
-			time.Sleep(500 * time.Millisecond)
-
-			// Sign the receipt. "I am done. RabbitMQ, you can delete this."
-			d.Ack(false)
-			log.Println("✅ Email Chef: Email sent.")
+			if err := processWithRetryOrDLQ(ctx, client, d, EmailQueue, EmailDLQ); err != nil {
+				log.Printf("Email Worker failed: %v", err)
+			}
 		}
 	}
 }
@@ -233,15 +253,77 @@ func startSmsWorker(ctx context.Context, client *pkgrabbit.RabbitmqClient, wg *s
 				return
 			}
 			log.Printf("📱 Processing SMS: %s", string(d.Body))
-			//Acknowledge message after processing
-			if err := d.Ack(false); err != nil {
-				log.Printf("SMS Worker:Failed to acknowledge message:%v", err)
+			if err := processWithRetryOrDLQ(ctx, client, d, SMSQueue, SMSDLQ); err != nil {
+				log.Printf("SMS Worker failed: %v", err)
 			}
-			log.Println("SMS Worker:SMS processed successfully")
 		}
 
 	}
 
+}
+
+func processWithRetryOrDLQ(ctx context.Context, client *pkgrabbit.RabbitmqClient, d amqp.Delivery, queueName, dlqName string) error {
+	idempotencyKey, retryCount, payload, err := unwrapJobWithMeta(d.Body)
+	if err != nil {
+		return err
+	}
+	processErr := processJob(payload)
+	if processErr == nil {
+		if err := d.Ack(false); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if retryCount >= maxDeliveryReties {
+		wrapped, wrapErr := wrapJobWithMeta(payload, idempotencyKey, retryCount)
+		if wrapErr != nil {
+			return wrapErr
+		}
+		if err := client.Publish(ctx, dlqName, wrapped); err != nil {
+			return err
+		}
+		return d.Ack(false)
+	}
+
+	wrapped, wrapErr := wrapJobWithMeta(payload, idempotencyKey, retryCount+1)
+	if wrapErr != nil {
+		return wrapErr
+	}
+	if err := client.Publish(ctx, queueName, wrapped); err != nil {
+		return err
+	}
+	return d.Ack(false)
+}
+
+func processJob(body []byte) error {
+	if len(body) == 0 {
+		return fmt.Errorf("empty job payload")
+	}
+	time.Sleep(500 * time.Millisecond)
+	return nil
+}
+
+type queuedJob struct {
+	IdempotencyKey string          `json:"idempotency_key"`
+	RetryCount     int32           `json:"retry_count"`
+	Payload        json.RawMessage `json:"payload"`
+}
+
+func wrapJobWithMeta(body []byte, idempotencyKey string, retryCount int32) ([]byte, error) {
+	return json.Marshal(queuedJob{
+		IdempotencyKey: idempotencyKey,
+		RetryCount:     retryCount,
+		Payload:        json.RawMessage(body),
+	})
+}
+
+func unwrapJobWithMeta(body []byte) (string, int32, []byte, error) {
+	var job queuedJob
+	if err := json.Unmarshal(body, &job); err != nil {
+		return "", 0, nil, err
+	}
+	return job.IdempotencyKey, job.RetryCount, []byte(job.Payload), nil
 }
 
 /*

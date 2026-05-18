@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/stripe/stripe-go/v79"
@@ -23,6 +24,12 @@ type StripeGateway struct {
 	client *client.API //this is the stripe client . it will be initialized with the secret key
 }
 
+var stripeCircuit = struct {
+	mu               sync.Mutex
+	consecutiveFails int
+	openUntil        time.Time
+}{}
+
 // NewSt`ripeGateway creates a new StripeGateway with the provided secret key
 func NewStripeGateway(apiKey string) *StripeGateway {
 	sc := &client.API{}
@@ -34,6 +41,12 @@ func NewStripeGateway(apiKey string) *StripeGateway {
 
 // ChargeAttempt executes a synchronous charge .off-session charge attempt. this method will handle 3ds and other authentication automatically as per stripe best practices
 func (sg *StripeGateway) ChargeAttempt(ctx context.Context, chargeReq PaymentRequest) (*PaymentResult, error) {
+	stripeCircuit.mu.Lock()
+	if time.Now().Before(stripeCircuit.openUntil) {
+		stripeCircuit.mu.Unlock()
+		return nil, ErrProviderDown
+	}
+	stripeCircuit.mu.Unlock()
 
 	//Input Validation
 
@@ -86,6 +99,13 @@ func (sg *StripeGateway) ChargeAttempt(ctx context.Context, chargeReq PaymentReq
 	pi, err := sg.client.PaymentIntents.New(params) //this lines means we are creating a payment intent in stripe
 	// 7. Error Translation
 	if err != nil {
+		stripeCircuit.mu.Lock()
+		stripeCircuit.consecutiveFails++
+		if stripeCircuit.consecutiveFails >= 5 {
+			stripeCircuit.openUntil = time.Now().Add(30 * time.Second)
+			stripeCircuit.consecutiveFails = 0
+		}
+		stripeCircuit.mu.Unlock()
 		return nil, sg.mapStripeError(err)
 	}
 
@@ -104,6 +124,9 @@ func (sg *StripeGateway) ChargeAttempt(ctx context.Context, chargeReq PaymentReq
 	}
 
 	// 9. Success
+	stripeCircuit.mu.Lock()
+	stripeCircuit.consecutiveFails = 0
+	stripeCircuit.mu.Unlock()
 	return &PaymentResult{
 		TransactionID: pi.ID,
 		status:        PaymentStatus(pi.Status),

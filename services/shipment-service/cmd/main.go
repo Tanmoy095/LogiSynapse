@@ -2,6 +2,7 @@
 package main
 
 import (
+	"log/slog"
 	"log"
 	"net"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 // main is the entry point of the Shipment Service, setting up the database connection, store, service, and gRPC server
 func main() {
+	logger := slog.Default()
 	// Load configuration from environment variables using the config package
 	// This retrieves database credentials (e.g., DB_USER, DB_PASSWORD, DB_HOST)
 	cfg := config.LoadConfig()
@@ -26,6 +28,7 @@ func main() {
 	store, err := store.NewPostgresStore(cfg.GetDBURL())
 	if err != nil {
 		// Log and exit if the store creation fails (e.g., due to connection issues)
+		logger.Error("failed to create store", "error", err)
 		log.Fatalf("failed to create store: %v", err)
 	}
 	// Ensure the store's database connection is closed when the program exits
@@ -41,6 +44,7 @@ func main() {
 		HostPort: temporalHost,
 	})
 	if err != nil {
+		logger.Error("failed to create Temporal client", "error", err)
 		log.Fatalf("failed to create Temporal client: %v", err)
 	}
 	defer temporalClient.Close()
@@ -54,6 +58,7 @@ func main() {
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		// Log and exit if the listener cannot be created
+		logger.Error("failed to listen", "error", err)
 		log.Fatalf("failed to listen: %v", err)
 	}
 
@@ -65,7 +70,7 @@ func main() {
 	proto.RegisterShipmentServiceServer(s, grpcServer.NewShipmentServer(svc))
 
 	// Log that the gRPC server is starting
-	log.Println("gRPC server running on :50051")
+	logger.Info("gRPC server running", "port", 50051)
 
 	// Start the gRPC server and serve requests on the listener
 	// This blocks until the server stops or an error occurs

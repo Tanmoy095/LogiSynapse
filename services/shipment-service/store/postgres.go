@@ -83,6 +83,55 @@ func (s *PostgresStore) CreateShipment(ctx context.Context, shipment contracts.S
 	return shipment, nil
 }
 
+// CreateShipmentWithOutbox inserts a new shipment into the database and publishes an outbox event
+// This function is used to create a shipment and publish an outbox event to the event store
+// The outbox event is used to track the shipment and publish it to the event store
+func (s *PostgresStore) CreateShipmentWithOutbox(ctx context.Context, shipment contracts.Shipment, eventKey string, eventPayload []byte) (contracts.Shipment, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return contracts.Shipment{}, fmt.Errorf("failed to start tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	insertShipment := `
+		INSERT INTO shipments (origin, destination, status, eta, carrier_name, carrier_tracking_url, tracking_number, length, width, height, weight, unit)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id`
+	statusStr := shipment.Status.String()
+	if err = tx.QueryRowContext(ctx, insertShipment,
+		shipment.Origin,
+		shipment.Destination,
+		statusStr,
+		shipment.Eta,
+		shipment.Carrier.Name,
+		shipment.Carrier.TrackingURL,
+		shipment.TrackingNumber,
+		shipment.Length,
+		shipment.Width,
+		shipment.Height,
+		shipment.Weight,
+		shipment.Unit,
+	).Scan(&shipment.ID); err != nil {
+		return contracts.Shipment{}, fmt.Errorf("failed to insert shipment in tx: %w", err)
+	}
+
+	insertOutbox := `
+		INSERT INTO shipment_outbox (aggregate_id, event_type, event_key, payload)
+		VALUES ($1, $2, $3, $4)`
+	if _, err = tx.ExecContext(ctx, insertOutbox, shipment.ID, "shipment.created", eventKey, eventPayload); err != nil {
+		return contracts.Shipment{}, fmt.Errorf("failed to insert outbox event: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return contracts.Shipment{}, fmt.Errorf("failed to commit tx: %w", err)
+	}
+	return shipment, nil
+}
+
 // GetShipment retrieves a shipment by ID.
 // Why: Needed for UpdateShipment and DeleteShipment to check status and preserve data.
 func (s *PostgresStore) GetShipment(ctx context.Context, id string) (contracts.Shipment, error) {
@@ -235,6 +284,39 @@ WHERE id = $13`
 	}
 	return nil
 
+}
+
+// PopPendingOutboxEvent fetches the oldest pending outbox event for a given aggregate ID.
+// It returns the event ID, payload, and an error if the event is not found.
+func (s *PostgresStore) PopPendingOutboxEvent(ctx context.Context, aggregateID string) (string, []byte, error) {
+	query := `
+		SELECT id, payload
+		FROM shipment_outbox
+		WHERE aggregate_id = $1 AND published_at IS NULL
+		ORDER BY created_at ASC
+		LIMIT 1`
+
+	var eventID string
+	var payload []byte
+	err := s.db.QueryRowContext(ctx, query, aggregateID).Scan(&eventID, &payload)
+	if err == sql.ErrNoRows {
+		return "", nil, nil
+	}
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to fetch pending outbox event: %w", err)
+	}
+	return eventID, payload, nil
+}
+
+func (s *PostgresStore) MarkOutboxEventPublished(ctx context.Context, eventID string) error {
+	if eventID == "" {
+		return nil
+	}
+	query := `UPDATE shipment_outbox SET published_at = NOW() WHERE id = $1`
+	if _, err := s.db.ExecContext(ctx, query, eventID); err != nil {
+		return fmt.Errorf("failed to mark outbox event published: %w", err)
+	}
+	return nil
 }
 
 // parseStatusStringToProto converts status string (stored in DB or from Shippo)
